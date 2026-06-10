@@ -172,6 +172,11 @@ function getUserAuthHeaders() {
     if (userToken) {
         return { 'x-user-name': username, 'x-user-token': userToken };
     }
+    // [修复] 支持管理员认证
+    const adminPassword = localStorage.getItem('lx_admin_password');
+    if (adminPassword) {
+        return { 'x-frontend-auth': adminPassword };
+    }
     // 兼容旧方式（自动登录流程会尝试获取 Token，此为局部调用后备）
     const pass = localStorage.getItem('lx_sync_pass');
     return username && pass ? { 'x-user-name': username, 'x-user-password': pass } : {};
@@ -12074,17 +12079,24 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 // 自动触发本地同步登录
                 syncManager.initLocal(playerUsername, '');
-                const listData = await syncManager.sync();
-                currentListData = listData;
-                if (currentListData) currentListData.username = playerUsername;
-                renderMyLists(listData);
-                loadLibraryData();
-                await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
                 
-                // [修复] 更新同步状态显示
-                updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${playerUsername})`);
-                
-                console.log('[Auth] 数据自动加载完成');
+                // [修复] 必须先调用 login() 来设置登录状态
+                const loginSuccess = await syncManager.client.login();
+                if (loginSuccess) {
+                    const listData = await syncManager.sync();
+                    currentListData = listData;
+                    if (currentListData) currentListData.username = playerUsername;
+                    renderMyLists(listData);
+                    loadLibraryData();
+                    await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
+                    
+                    // [修复] 更新同步状态显示
+                    updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${playerUsername})`);
+                    
+                    console.log('[Auth] 数据自动加载完成');
+                } else {
+                    console.error('[Auth] 自动登录失败');
+                }
             } catch (e) {
                 console.error('[Auth] 自动加载数据失败:', e);
             }
