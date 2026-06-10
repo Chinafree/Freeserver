@@ -1,26 +1,30 @@
-FROM alpine AS base
-
-FROM base AS builder
+FROM node:18-alpine AS builder
 WORKDIR /source-code
 COPY . .
 
-RUN apk add --update \
+RUN apk add --no-cache \
   g++ \
   make \
+  python3 \
   py3-pip \
-  nodejs \
-  npm \
-  && (apk add --no-cache chromaprint || true) \
-  && npm install --ignore-scripts --no-audit --no-fund && npm run build \
-  && rm -rf node_modules && npm install --omit=dev --no-audit --no-fund \
-  && mkdir build-output \
+  && ln -sf python3 /usr/bin/python \
+  && (apk add --no-cache chromaprint || true)
+
+RUN npm install --ignore-scripts --no-audit --no-fund
+
+RUN npm run build
+
+RUN rm -rf node_modules && npm install --omit=dev --no-audit --no-fund
+
+RUN mkdir build-output \
   && mv server node_modules config.js index.js package.json public -t build-output
 
 
-FROM base AS final
+FROM node:18-alpine AS final
 WORKDIR /server
 
-RUN apk add --update --no-cache nodejs \
+RUN apk add --no-cache \
+  ca-certificates \
   && (apk add --no-cache chromaprint || echo "chromaprint apk not found, will use bundled binary")
 
 COPY --from=builder ./source-code/build-output ./
@@ -33,22 +37,5 @@ EXPOSE 9527
 ENV NODE_ENV='production'
 ENV PORT=9527
 ENV BIND_IP='0.0.0.0'
-# ENV PROXY_HEADER 'x-real-ip'
-# ENV SERVER_NAME 'My Sync Server'
-# ENV MAX_SNAPSHOT_NUM '10'
-# ENV LIST_ADD_MUSIC_LOCATION_TYPE 'top'
-# ENV LX_USER_user1 '123.123'
-# ENV LX_USER_user2 '{ "password": "123.456", "maxSnapshotNum": 10, "list.addMusicLocationType": "top" }'
-# ENV CONFIG_PATH '/server/config.js'
-# ENV WEBDAV_URL ''
-# ENV WEBDAV_USERNAME ''
-# ENV WEBDAV_PASSWORD ''
-# ENV SYNC_INTERVAL '60'
-# ENV ENABLE_WEBPLAYER_AUTH 'false'
-# ENV WEBPLAYER_PASSWORD '123456'
-# ENV LOG_PATH '/server/logs'
-# ENV DATA_PATH '/server/data'
-# ENV PLAYER_ENABLE_AUTH 'true'
-# ENV PLAYER_PASSWORD '123.456'
 
 CMD [ "node", "index.js" ]
