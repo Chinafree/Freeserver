@@ -214,29 +214,12 @@ window.updateUserUI = updateUserUI;
 async function handleHeaderLogout(e) {
     if (e) e.stopPropagation();
     
-    const confirmed = await showSelect('退出同步账号', '确定要退出当前账号并清除同步凭证吗？', { danger: true });
-    if (confirmed) {
-        // [核心优化] 直接调用 handleSyncLogout 即可复用所有清除逻辑和 UI 更新逻辑
-        if (typeof handleSyncLogout === 'function') {
-            await handleSyncLogout();
-        } else {
-            // 后备方案 (如果 handleSyncLogout 未定义)
-            localStorage.removeItem('lx_user_token');
-            localStorage.removeItem('lx_sync_user');
-            localStorage.removeItem('lx_sync_pass');
-            userToken = null;
-        }
-        
-        showSuccess('已安全退出登录');
-        
-        // 更新 UI 状态
-        if (typeof updateUserUI === 'function') updateUserUI();
-        
-        // [可选] 如果当前在我的收藏页面，可能需要刷新列表
-        if (typeof renderMyLists === 'function') {
-            renderMyLists(null);
-        }
+    try {
+        await fetch('/api/music/auth/logout', { method: 'POST' });
+    } catch (e) {
+        console.error('[Auth] 登出请求失败:', e);
     }
+    window.location.replace('/music/login');
 }
 window.handleHeaderLogout = handleHeaderLogout;
 
@@ -247,15 +230,6 @@ window.handleHeaderLogout = handleHeaderLogout;
         const config = await response.json();
         window.lx_config = config; // 获取公共配置供权限模块使用
         authEnabled = config['player.enableAuth'] === true;
-
-        // 若开启认证，显示登出按钮
-        if (authEnabled) {
-            const logoutBtn = document.getElementById('logout-btn');
-            if (logoutBtn) {
-                logoutBtn.classList.remove('hidden');
-                logoutBtn.classList.add('flex');
-            }
-        }
 
         // 获取到公共配置后，立即刷新一次 UI 状态 (管理员按钮/设置项禁用等)
         if (typeof syncSettingsUI === 'function') syncSettingsUI();
@@ -305,15 +279,6 @@ window.handleHeaderLogout = handleHeaderLogout;
     }
 })();
 
-// 登出：调用服务端清除 Session，跳转到登录页
-async function handleLogout() {
-    try {
-        await fetch('/api/music/auth/logout', { method: 'POST' });
-    } catch (e) {
-        console.error('[Auth] 登出请求失败:', e);
-    }
-    window.location.replace('/music/login');
-}
 // ===== 认证代码结束 =====
 
 // 音质选择器初始化
