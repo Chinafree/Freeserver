@@ -188,8 +188,15 @@ function updateUserUI() {
 
     if (!loginBtn || !userDisplay || !usernameEl) return;
 
-    const username = localStorage.getItem('lx_sync_user');
-    const token = localStorage.getItem('lx_user_token');
+    // 优先使用同步用户登录状态，其次使用播放器登录状态
+    let username = localStorage.getItem('lx_sync_user');
+    let token = localStorage.getItem('lx_user_token');
+    
+    // 如果没有同步用户登录，检查播放器登录状态
+    if (!token || !username) {
+        username = localStorage.getItem('lx_login_username');
+        token = username ? 'player_auth' : null;
+    }
 
     if (token && username) {
         // 已登录
@@ -219,6 +226,8 @@ async function handleHeaderLogout(e) {
     } catch (e) {
         console.error('[Auth] 登出请求失败:', e);
     }
+    // 清除播放器登录状态
+    localStorage.removeItem('lx_login_username');
     window.location.replace('/music/login');
 }
 window.handleHeaderLogout = handleHeaderLogout;

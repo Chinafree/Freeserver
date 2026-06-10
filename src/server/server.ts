@@ -3587,22 +3587,42 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       if (pathname === '/api/music/auth' && req.method === 'POST') {
         void readBody(req).then(body => {
           try {
-            const { password } = JSON.parse(body)
-            const correctPassword = global.lx.config['player.password'] || ''
-
-            if (password === correctPassword) {
-              const sessionId = generateSessionId()
-              playerSessions.set(sessionId, { createdAt: Date.now() })
-              loginLog.info(`Player login success from ${ip}`)
-              res.writeHead(200, {
-                'Content-Type': 'application/json',
-                'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}`
-              })
-              res.end(JSON.stringify({ success: true }))
+            const { username, password } = JSON.parse(body)
+            
+            // 如果提供了用户名，使用用户认证
+            if (username) {
+              const user = global.lx.config.users.find((u: any) => u.name === username && u.password === password)
+              if (user) {
+                const sessionId = generateSessionId()
+                playerSessions.set(sessionId, { createdAt: Date.now(), username })
+                loginLog.info(`Player login success (user): ${username} from ${ip}`)
+                res.writeHead(200, {
+                  'Content-Type': 'application/json',
+                  'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}`
+                })
+                res.end(JSON.stringify({ success: true, username }))
+              } else {
+                loginLog.warn(`Player login failed (user): ${username} from ${ip}`)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false }))
+              }
             } else {
-              loginLog.warn(`Player login failed from ${ip}`)
-              res.writeHead(200, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ success: false }))
+              // 旧的统一密码认证方式
+              const correctPassword = global.lx.config['player.password'] || ''
+              if (password === correctPassword) {
+                const sessionId = generateSessionId()
+                playerSessions.set(sessionId, { createdAt: Date.now() })
+                loginLog.info(`Player login success from ${ip}`)
+                res.writeHead(200, {
+                  'Content-Type': 'application/json',
+                  'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}`
+                })
+                res.end(JSON.stringify({ success: true }))
+              } else {
+                loginLog.warn(`Player login failed from ${ip}`)
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false }))
+              }
             }
           } catch (err: any) {
             res.writeHead(500)
