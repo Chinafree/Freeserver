@@ -236,85 +236,6 @@ async function handleHeaderLogout(e) {
 }
 window.handleHeaderLogout = handleHeaderLogout;
 
-// 页面加载时：检查是否开启认证，若开启则显示登出按钮
-(async () => {
-    try {
-        const response = await fetch('/api/music/config');
-        const config = await response.json();
-        window.lx_config = config; // 获取公共配置供权限模块使用
-        authEnabled = config['player.enableAuth'] === true;
-
-        // 获取到公共配置后，立即刷新一次 UI 状态 (管理员按钮/设置项禁用等)
-        if (typeof syncSettingsUI === 'function') syncSettingsUI();
-        else if (typeof updateAdminUI === 'function') updateAdminUI();
-
-        // [新增] 有 Token 时验证其有效性
-        if (userToken) {
-            try {
-                const vRes = await fetch('/api/user/auth/verify', {
-                    headers: { 'x-user-token': userToken }
-                });
-                const vData = await vRes.json();
-                if (!vData.valid) {
-                    console.log('[Auth] 用户 Token 已过期，已清除。如需使用账户功能请重新登录。');
-                    localStorage.removeItem('lx_user_token');
-                    userToken = null;
-                }
-            } catch (e) {
-                console.warn('[Auth] Token 验证失败:', e);
-            }
-        }
-
-        // [新增] 公开受限用户自动尝试从服务器拉取配置 (_open)
-        if (config['user.enablePublicRestriction']) {
-            console.log('[Auth] 检测到公开限制已开启，尝试拉取公共配置...');
-            if (typeof fetchSettingsFromServer === 'function') {
-                await fetchSettingsFromServer();
-            }
-        }
-
-        // [新增] 客户端模式自动连接远程同步 (仅在已登录到本地账户时触发，防止 _open 访客同步)
-        if (userToken && settings.enableClientModeSync && settings.remoteSyncUrl && settings.remoteSyncCode) {
-            console.info('[Sync] Client mode enabled, auto-connecting to remote server...');
-            // 降低延迟，只要认证完成后即可触发
-            setTimeout(() => {
-                if (typeof handleRemoteOverwriteConnect === 'function') {
-                    handleRemoteOverwriteConnect(true);
-                }
-            }, 500);
-        }
-
-        // [新增] 更新 UI 上的用户名状态
-        updateUserUI();
-
-        // [新增] 如果有播放器登录的用户名和 token，自动加载数据
-        const playerUsername = localStorage.getItem('lx_login_username');
-        if (playerUsername && userToken && !currentListData) {
-            console.log('[Auth] 检测到播放器登录状态，自动加载数据...');
-            try {
-                // 自动触发本地同步登录
-                syncManager.initLocal(playerUsername, '');
-                const listData = await syncManager.sync();
-                currentListData = listData;
-                if (currentListData) currentListData.username = playerUsername;
-                renderMyLists(listData);
-                loadLibraryData();
-                await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
-                
-                // [修复] 更新同步状态显示
-                updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${playerUsername})`);
-                
-                console.log('[Auth] 数据自动加载完成');
-            } catch (e) {
-                console.error('[Auth] 自动加载数据失败:', e);
-            }
-        }
-
-    } catch (error) {
-        console.error('[Auth] 初始化检查失败:', error);
-    }
-})();
-
 // ===== 认证代码结束 =====
 
 // 音质选择器初始化
@@ -12096,5 +12017,82 @@ document.addEventListener('click', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
     window.CustomSelectManager.initAll();
 });
+
+// ========================================
+// 页面加载时：检查认证状态并自动加载数据
+// ========================================
+(async () => {
+    try {
+        const response = await fetch('/api/music/config');
+        const config = await response.json();
+        window.lx_config = config; // 获取公共配置供权限模块使用
+        authEnabled = config['player.enableAuth'] === true;
+
+        // [新增] 有 Token 时验证其有效性
+        if (userToken) {
+            try {
+                const vRes = await fetch('/api/user/auth/verify', {
+                    headers: { 'x-user-token': userToken }
+                });
+                const vData = await vRes.json();
+                if (!vData.valid) {
+                    console.log('[Auth] 用户 Token 已过期，已清除。如需使用账户功能请重新登录。');
+                    localStorage.removeItem('lx_user_token');
+                    userToken = null;
+                }
+            } catch (e) {
+                console.warn('[Auth] Token 验证失败:', e);
+            }
+        }
+
+        // [新增] 公开受限用户自动尝试从服务器拉取配置 (_open)
+        if (config['user.enablePublicRestriction']) {
+            console.log('[Auth] 检测到公开限制已开启，尝试拉取公共配置...');
+            if (typeof fetchSettingsFromServer === 'function') {
+                await fetchSettingsFromServer();
+            }
+        }
+
+        // [新增] 客户端模式自动连接远程同步 (仅在已登录到本地账户时触发，防止 _open 访客同步)
+        if (userToken && settings.enableClientModeSync && settings.remoteSyncUrl && settings.remoteSyncCode) {
+            console.info('[Sync] Client mode enabled, auto-connecting to remote server...');
+            setTimeout(() => {
+                if (typeof handleRemoteOverwriteConnect === 'function') {
+                    handleRemoteOverwriteConnect(true);
+                }
+            }, 500);
+        }
+
+        // [新增] 更新 UI 上的用户名状态
+        updateUserUI();
+        updateAdminUI();
+
+        // [新增] 如果有播放器登录的用户名和 token，自动加载数据
+        const playerUsername = localStorage.getItem('lx_login_username');
+        if (playerUsername && userToken && !currentListData) {
+            console.log('[Auth] 检测到播放器登录状态，自动加载数据...');
+            try {
+                // 自动触发本地同步登录
+                syncManager.initLocal(playerUsername, '');
+                const listData = await syncManager.sync();
+                currentListData = listData;
+                if (currentListData) currentListData.username = playerUsername;
+                renderMyLists(listData);
+                loadLibraryData();
+                await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
+                
+                // [修复] 更新同步状态显示
+                updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${playerUsername})`);
+                
+                console.log('[Auth] 数据自动加载完成');
+            } catch (e) {
+                console.error('[Auth] 自动加载数据失败:', e);
+            }
+        }
+
+    } catch (error) {
+        console.error('[Auth] 初始化检查失败:', error);
+    }
+})();
 
 
