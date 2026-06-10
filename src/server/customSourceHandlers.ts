@@ -484,16 +484,17 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
         const { id, sourceId, enabled, username, allowUnsafeVM } = JSON.parse(body)
         const targetId = id || sourceId
 
+        // [修复] 先检查是否是管理员，如果是管理员则允许所有操作
+        const auth = req.headers['x-frontend-auth']
+        const isAdmin = auth === global.lx.config['frontend.password']
+
         let targetOwner = (username && username !== 'default') ? username : 'open'
 
-        // 检查权限限制
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源状态切换已受限，仅管理员可操作。' }))
-                return
-            }
+        // 检查权限限制：只有管理员可以操作公开源
+        if (targetOwner === 'open' && !isAdmin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: '公共源状态切换已受限，仅管理员可操作。' }))
+            return
         }
 
         let sourcesDir = getSourceDir(targetOwner)
@@ -618,16 +619,17 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
             throw new Error('sourceIds must be an array')
         }
 
+        // [修复] 先检查是否是管理员，如果是管理员则允许所有操作
+        const auth = req.headers['x-frontend-auth']
+        const isAdmin = auth === global.lx.config['frontend.password']
+
         let targetOwner = (username && username !== 'default') ? username : 'open'
 
-        // 检查权限限制 (公开源排序)
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源排序已受限，仅管理员可操作。' }))
-                return
-            }
+        // 检查权限限制：只有管理员可以操作公开源
+        if (targetOwner === 'open' && !isAdmin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: '公共源排序已受限，仅管理员可操作。' }))
+            return
         }
 
         let sourcesDir = getSourceDir(targetOwner)
@@ -698,17 +700,18 @@ export async function handleDelete(req: IncomingMessage, res: ServerResponse) {
         const { id, sourceId, username } = JSON.parse(body)
         const targetId = id || sourceId
 
+        // [修复] 先检查是否是管理员，如果是管理员则允许所有操作
+        const auth = req.headers['x-frontend-auth']
+        const isAdmin = auth === global.lx.config['frontend.password']
+
         // 查找逻辑同 Toggle
         let targetOwner = (username && username !== 'default') ? username : 'open'
 
-        // 检查权限限制
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源删除已受限，仅管理员可操作。' }))
-                return
-            }
+        // 检查权限限制：只有管理员可以操作公开源
+        if (targetOwner === 'open' && !isAdmin) {
+            res.writeHead(403, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: false, error: '公共源删除已受限，仅管理员可操作。' }))
+            return
         }
 
         let sourcesDir = getSourceDir(targetOwner)

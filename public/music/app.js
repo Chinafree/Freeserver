@@ -12077,13 +12077,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (playerUsername && userToken && !currentListData) {
             console.log('[Auth] 检测到播放器登录状态，自动加载数据...');
             try {
-                // 自动触发本地同步登录
-                syncManager.initLocal(playerUsername, '');
+                // 直接使用 token 获取数据列表
+                const headers = { 'x-user-name': playerUsername, 'x-user-token': userToken };
+                const res = await fetch('/api/user/list', { headers });
                 
-                // [修复] 必须先调用 login() 来设置登录状态
-                const loginSuccess = await syncManager.client.login();
-                if (loginSuccess) {
-                    const listData = await syncManager.sync();
+                if (res.ok) {
+                    const listData = await res.json();
                     currentListData = listData;
                     if (currentListData) currentListData.username = playerUsername;
                     renderMyLists(listData);
@@ -12095,7 +12094,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     console.log('[Auth] 数据自动加载完成');
                 } else {
-                    console.error('[Auth] 自动登录失败');
+                    console.error('[Auth] 获取数据失败:', res.status);
                 }
             } catch (e) {
                 console.error('[Auth] 自动加载数据失败:', e);
