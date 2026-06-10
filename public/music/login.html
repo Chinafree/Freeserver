@@ -145,6 +145,11 @@
                     // 保存登录用户名到 localStorage
                     if (data.username) {
                         localStorage.setItem('lx_login_username', data.username)
+                        localStorage.setItem('lx_sync_user', data.username)
+                    }
+                    // 保存用户 token（用于数据同步）
+                    if (data.token) {
+                        localStorage.setItem('lx_user_token', data.token)
                     }
                     setTimeout(() => window.location.replace('./'), 300)
                 } else {

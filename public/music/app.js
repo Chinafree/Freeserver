@@ -226,8 +226,12 @@ async function handleHeaderLogout(e) {
     } catch (e) {
         console.error('[Auth] 登出请求失败:', e);
     }
-    // 清除播放器登录状态
+    // 清除所有登录状态
     localStorage.removeItem('lx_login_username');
+    localStorage.removeItem('lx_sync_user');
+    localStorage.removeItem('lx_user_token');
+    localStorage.removeItem('lx_admin_password');
+    sessionStorage.removeItem('lx_player_auth');
     window.location.replace('/music/login');
 }
 window.handleHeaderLogout = handleHeaderLogout;
@@ -9047,6 +9051,11 @@ async function renderCustomSources() {
 
     // Filter based on setting (if list is successfully fetched)
     if (list && settings.enablePublicSources === false) {
+        list = list.filter(item => item.owner !== 'open');
+    }
+
+    // [新增] 非管理员用户不应该看到公开源
+    if (list && !isAdmin) {
         list = list.filter(item => item.owner !== 'open');
     }
 

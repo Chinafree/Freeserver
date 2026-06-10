@@ -3608,12 +3608,17 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
                 
                 const sessionId = generateSessionId()
                 playerSessions.set(sessionId, { createdAt: Date.now(), username })
+                
+                // 同时生成用户 token 用于数据同步
+                const userToken = generateSessionId()
+                userSessions.set(userToken, { username, createdAt: Date.now() })
+                
                 loginLog.info(`Player login success (user): ${username} from ${ip}`)
                 res.writeHead(200, {
                   'Content-Type': 'application/json',
                   'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${SESSION_TTL / 1000}`
                 })
-                res.end(JSON.stringify({ success: true, username }))
+                res.end(JSON.stringify({ success: true, username, token: userToken }))
               } else {
                 loginLog.warn(`Player login failed (user): ${username} from ${ip}`)
                 res.writeHead(200, { 'Content-Type': 'application/json' })
