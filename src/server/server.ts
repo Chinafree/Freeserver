@@ -27,7 +27,7 @@ import needle from 'needle'
 const { MusicTagger, MetaPicture } = require('music-tag-native')
 
 // ===== Player Session Store =====
-const playerSessions = new Map<string, { createdAt: number }>()
+const playerSessions = new Map<string, { createdAt: number; username?: string }>()
 const SESSION_TTL = 24 * 60 * 60 * 1000 // 24小时
 const SESSION_COOKIE_NAME = 'lx_player_session'
 

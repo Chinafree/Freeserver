@@ -21,6 +21,11 @@ declare namespace LX {
      * 添加歌曲到我的列表时的方式
      */
     'list.addMusicLocationType'?: AddMusicLocationType
+
+    /**
+     * 最后活跃时间（时间戳）
+     */
+    lastActiveTime?: number
   }
 
   interface UserConfig extends User {
