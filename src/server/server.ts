@@ -481,6 +481,7 @@ const saveUsers = () => {
       password: u.password,
       maxSnapshotNum: u.maxSnapshotNum,
       'list.addMusicLocationType': u['list.addMusicLocationType'],
+      lastActiveTime: u.lastActiveTime,
     })), null, 2))
     return true
   } catch (err) {
@@ -930,8 +931,12 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
           return
         }
         if (req.method === 'GET') {
-          // 修改：返回包含密码的用户列表
-          const users = global.lx.config.users.map(u => ({ name: u.name, password: u.password }))
+          // 返回包含密码和活跃时间的用户列表
+          const users = global.lx.config.users.map(u => ({ 
+            name: u.name, 
+            password: u.password,
+            lastActiveTime: u.lastActiveTime
+          }))
           res.writeHead(200, {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate'
@@ -1569,6 +1574,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             }
             const user = global.lx.config.users.find((u: any) => u.name === username && u.password === password)
             if (user) {
+              // 更新用户活跃时间
+              user.lastActiveTime = Date.now()
+              saveUsers()
+              
               const token = generateSessionId()
               userSessions.set(token, { username, createdAt: Date.now() })
               loginLog.info(`User token issued: ${username} from ${ip}`)
@@ -3593,6 +3602,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             if (username) {
               const user = global.lx.config.users.find((u: any) => u.name === username && u.password === password)
               if (user) {
+                // 更新用户活跃时间
+                user.lastActiveTime = Date.now()
+                saveUsers()
+                
                 const sessionId = generateSessionId()
                 playerSessions.set(sessionId, { createdAt: Date.now(), username })
                 loginLog.info(`Player login success (user): ${username} from ${ip}`)

@@ -2403,7 +2403,7 @@ select.form-input option:checked {
 
 .users-table-header {
     display: grid;
-    grid-template-columns: 80px 2fr 1.5fr 140px 100px;
+    grid-template-columns: 80px 2fr 1.5fr 1.5fr 140px 100px;
     gap: 1.5rem;
     padding: 1rem 1.5rem;
     margin: 0 1rem 0.75rem;
@@ -2419,7 +2419,7 @@ select.form-input option:checked {
 
 .user-row {
     display: grid;
-    grid-template-columns: 80px 2fr 1.5fr 140px 100px;
+    grid-template-columns: 80px 2fr 1.5fr 1.5fr 140px 100px;
     gap: 1.5rem;
     padding: 1rem 1.5rem;
     margin: 0 1rem 0.5rem;
@@ -2499,6 +2499,18 @@ select.form-input option:checked {
     border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
+.status-badge.moderate {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--accent-warning);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-badge.inactive {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--accent-danger);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
 .status-badge.active::before {
     content: '';
     width: 6px;
@@ -2507,6 +2519,22 @@ select.form-input option:checked {
     border-radius: 50%;
     box-shadow: 0 0 10px var(--accent-success);
     animation: pulse-dot-active 2s infinite;
+}
+
+.status-badge.moderate::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent-warning);
+    border-radius: 50%;
+}
+
+.status-badge.inactive::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent-danger);
+    border-radius: 50%;
 }
 
 @keyframes pulse-dot-active {
@@ -2524,6 +2552,20 @@ select.form-input option:checked {
         transform: scale(1);
         opacity: 1;
     }
+}
+
+/* 活跃时间列样式 */
+.col-active-time {
+    font-family: inherit;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.active-time-text {
+    font-size: 0.875rem;
+    color: var(--text-primary);
 }
 
 /* 密码列样式 */
@@ -3616,7 +3658,7 @@ input:-webkit-autofill:active {
         grid-template-rows: auto auto !important;
         grid-template-areas:
             "check info actions"
-            "check pwd  actions" !important;
+            "check pwd actions" !important;
         gap: 0.4rem 0.75rem !important;
         padding: 0.875rem 1rem !important;
         margin: 0 0.75rem 0.75rem !important;
@@ -3663,6 +3705,22 @@ input:-webkit-autofill:active {
         border-radius: 0 !important;
         margin: 0 !important;
         font-size: 0.8rem;
+        flex: 1;
+    }
+
+    .user-row .col-active-time {
+        grid-area: pwd !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 0.5rem !important;
+        background: transparent !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        margin: 0 !important;
+        font-size: 0.8rem;
+        color: var(--text-secondary) !important;
+        flex: 1;
     }
 
     .password-text {

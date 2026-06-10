@@ -27,6 +27,39 @@ function stringToColor(str) {
     return `hsl(${h}, 70%, 45%)`;
 }
 
+// 格式化活跃时间显示
+function formatActiveTime(timestamp) {
+    if (!timestamp) return '从未登录';
+    
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    
+    if (minutes < 1) return '刚刚';
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    if (days < 7) return `${days}天前`;
+    
+    // 超过7天显示具体日期
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// 获取活跃状态
+function getActiveStatus(timestamp) {
+    if (!timestamp) return { text: '未登录', class: 'inactive' };
+    
+    const now = Date.now();
+    const diff = now - timestamp;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    
+    if (days < 1) return { text: '活跃', class: 'active' };
+    if (days < 7) return { text: '一般', class: 'moderate' };
+    return { text: '不活跃', class: 'inactive' };
+}
+
 class App {
     constructor() {
         this.password = null;
@@ -787,7 +820,11 @@ class App {
             return;
         }
 
-        container.innerHTML = this.users.map((user, index) => `
+        container.innerHTML = this.users.map((user, index) => {
+            const activeStatus = getActiveStatus(user.lastActiveTime);
+            const activeTime = formatActiveTime(user.lastActiveTime);
+            
+            return `
             <div class="user-row glass">
                 <div class="col-checkbox">
                     <input type="checkbox" class="user-checkbox" data-index="${index}" onchange="app.updateUserBatchBtn()">
@@ -819,8 +856,11 @@ class App {
                         </svg>
                     </button>
                 </div>
+                <div class="col-active-time">
+                    <span class="active-time-text">${activeTime}</span>
+                </div>
                 <div class="col-status">
-                    <span class="status-badge active">活跃</span>
+                    <span class="status-badge ${activeStatus.class}">${activeStatus.text}</span>
                 </div>
                 <div class="col-actions">
                     <button class="btn-delete" onclick="app.deleteUser(${index})" title="删除用户">
@@ -830,7 +870,7 @@ class App {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `}).join('');
 
         // 重置全选状态
         const selectAll = document.getElementById('select-all-users');
