@@ -300,6 +300,10 @@ window.handleHeaderLogout = handleHeaderLogout;
                 renderMyLists(listData);
                 loadLibraryData();
                 await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
+                
+                // [修复] 更新同步状态显示
+                updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${playerUsername})`);
+                
                 console.log('[Auth] 数据自动加载完成');
             } catch (e) {
                 console.error('[Auth] 自动加载数据失败:', e);
@@ -3130,6 +3134,7 @@ async function handleAdminLogin() {
     const authorized = await handleAdminAuth('请输入管理员密码进行登录验证');
     if (authorized) {
         showSuccess('管理员已登录');
+        updateAdminUI(); // 先更新管理员状态 UI
         syncSettingsUI(); // 刷新设置界面状态
         if (typeof renderCustomSources === 'function') renderCustomSources(); // 登录成功后即时刷新自定义源列表（解除隐藏）
     }
