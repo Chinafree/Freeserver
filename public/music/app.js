@@ -287,6 +287,25 @@ window.handleHeaderLogout = handleHeaderLogout;
         // [新增] 更新 UI 上的用户名状态
         updateUserUI();
 
+        // [新增] 如果有播放器登录的用户名和 token，自动加载数据
+        const playerUsername = localStorage.getItem('lx_login_username');
+        if (playerUsername && userToken && !currentListData) {
+            console.log('[Auth] 检测到播放器登录状态，自动加载数据...');
+            try {
+                // 自动触发本地同步登录
+                syncManager.initLocal(playerUsername, '');
+                const listData = await syncManager.sync();
+                currentListData = listData;
+                if (currentListData) currentListData.username = playerUsername;
+                renderMyLists(listData);
+                loadLibraryData();
+                await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
+                console.log('[Auth] 数据自动加载完成');
+            } catch (e) {
+                console.error('[Auth] 自动加载数据失败:', e);
+            }
+        }
+
     } catch (error) {
         console.error('[Auth] 初始化检查失败:', error);
     }
@@ -9054,7 +9073,7 @@ async function renderCustomSources() {
         list = list.filter(item => item.owner !== 'open');
     }
 
-    // [新增] 非管理员用户不应该看到公开源
+    // [修复] 只有 admin 用户才能看到公开源
     if (list && !isAdmin) {
         list = list.filter(item => item.owner !== 'open');
     }
