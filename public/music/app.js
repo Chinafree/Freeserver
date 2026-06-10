@@ -3167,12 +3167,14 @@ function updateAdminUI() {
     }
     const manageBtn = document.getElementById('btn-custom-source-manage');
     if (manageBtn) {
-        const isPublicRestrictionEnabled = !!window.lx_config?.['user.enablePublicRestriction'];
-        const isUser = !!userToken;
-        // 如果开启了公开限制，且既不是管理员也不是登录用户，则隐藏管理入口（或之后显示锁定界面）
-        // 这里根据用户要求，只要登录了就不隐藏
-        const isRestricted = isPublicRestrictionEnabled && !isAdmin && !isUser;
-        manageBtn.classList.toggle('hidden', isRestricted);
+        // 自定义源管理仅对管理员可见
+        manageBtn.classList.toggle('hidden', !isAdmin);
+    }
+    
+    // 搜索框旁边的自定义源管理按钮也仅对管理员可见
+    const searchBtn = document.getElementById('btn-custom-source-search');
+    if (searchBtn) {
+        searchBtn.classList.toggle('hidden', !isAdmin);
     }
     if (scopeTag) {
         scopeTag.classList.toggle('hidden', !isPublic);
@@ -9394,6 +9396,14 @@ async function deleteSource(sourceId) {
 
 // 模态框控制
 function openCustomSourceModal() {
+    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    
+    // 只有管理员才能打开自定义源管理
+    if (!isAdmin) {
+        showInfo('权限不足：只有管理员才能管理自定义源');
+        return;
+    }
+
     const modal = document.getElementById('custom-source-modal');
     const content = document.getElementById('custom-source-modal-content');
     if (modal) modal.classList.remove('hidden');

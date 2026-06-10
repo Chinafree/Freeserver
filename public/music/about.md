@@ -1,18 +1,8 @@
-# LX Music Web
+# Free Music Web
 
-<div align="center">
-  <img src="/music/assets/logo.svg" width="120" height="120" alt="LX Music Logo">
-  <br>
-  <h1>LX Music Web</h1>
-  <p>
-    <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status">
-    <img src="https://img.shields.io/badge/hash-{{buildHash}}-%2310b981?style=flat-square" alt="Build Hash">
-    <img src="https://img.shields.io/badge/version-{{version}}-blue?style=flat-square" alt="Version">
-    <a href="/music/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-orange?style=flat-square" alt="License"></a>
-  </p>
-</div>
+## 项目介绍
+ Free Music Web 是一个基于 LX Music Sync Server 的高性能 Web 播放器，提供原生 App 般的音乐体验。
 
-LX Music Sync Server 内置的高性能 Web 播放器，提供原生 App 般的音乐体验。
 
 ## ✨ 核心特性
 
@@ -54,18 +44,4 @@ LX Music Sync Server 内置的高性能 Web 播放器，提供原生 App 般的�
 2. **非商业性质**: 本项目仅用于对技术可行性的探索及研究，不接受任何商业（包括但不限于广告等）合作及捐赠。
 3. **接受协议**: 若你使用了本项目，即代表你接受本协议。
 
-## 🤝 致谢
 
-本项目的 Web 播放器参考了 [lx-music-desktop](https://github.com/lyswhut/lx-music-desktop) 的设计与实现。
-
-感谢 [lyswhut](https://github.com/lyswhut) 开发了如此优秀的开源音乐软件。
-
-核心接口基于 `musicsdk` 实现。
-
-<div align="center" style="margin-top: 20px;">
-  <a href="https://github.com/XCQ0607/lxserver" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">
-    <i class="fab fa-github"></i> GitHub 仓库
-  </a>
-</div>
-
-Copyright © 2026 [xcq0607](https://github.com/xcq0607)

@@ -999,7 +999,7 @@
                     <path style="fill: var(--c-600)"
                         d="M301.061 223.876h-50.994c-3.911 0-7.574.95-10.889 2.523-8.616 4.09-14.615 12.798-14.615 22.973v76.51h-37.708c-14.082 0-17.428 8.071-7.466 18.029l46.893 46.898 31.25 31.246a25.424 25.424 0 0 0 18.033 7.474c6.523 0 13.052-2.484 18.029-7.474l78.152-78.145c9.951-9.958 6.608-18.029-7.47-18.029h-37.71v-76.51c.001-14.078-11.42-25.495-25.505-25.495z" />
                 </svg>
-                <h1 class="text-xl font-bold text-emerald-600 tracking-wider">LX MUSIC</h1>
+                <h1 class="text-xl font-bold text-emerald-600 tracking-wider">Free MUSIC</h1>
                 <!-- Close button for mobile -->
                 <button onclick="toggleSidebar()" class="md:hidden absolute right-4 text-gray-500 hover:text-red-500">
                     <i class="fas fa-times"></i>
@@ -1093,12 +1093,6 @@
                 </div>
             </div>
 
-            <div
-                class="hidden md:block px-6 py-4 text-[10px] t-text-muted text-center border-t t-border-main sidebar-copyright-text">
-                Copyright © 2026 <a href="https://github.com/xcq0607" target="_blank"
-                    class="hover:text-emerald-500 transition-colors">xcq0607</a>.<br>
-                Licensed under Apache-2.0.
-            </div>
         </aside>
 
         <!-- Content Area -->
@@ -1166,14 +1160,6 @@
                         <span class="hidden sm:inline text-xs font-medium">退出</span>
                     </button>
 
-                    <!-- Hide social/version info on mobile -->
-                    <div class="hidden lg:flex items-center gap-4">
-                        <a href="https://github.com/XCQ0607/lxserver" target="_blank"
-                            class="t-text-muted hover:t-text-muted transition-colors" title="GitHub">
-                            <i class="fab fa-github text-xl"></i>
-                        </a>
-                        <div class="text-sm t-text-muted" id="app-version">v1.0.0 Web</div>
-                    </div>
                 </div>
             </header>
 
@@ -1227,7 +1213,7 @@
                                 <option value="mg">咪咕</option>
                             </select>
 
-                            <button onclick="openCustomSourceModal()"
+                            <button id="btn-custom-source-search" onclick="openCustomSourceModal()"
                                 class="p-3 t-bg-panel border t-border-main rounded-xl hover:t-bg-main t-text-muted hover:text-emerald-600 transition-colors shadow-sm"
                                 title="管理自定义源">
                                 <i class="fas fa-plug"></i>
