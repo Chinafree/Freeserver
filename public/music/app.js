@@ -9195,9 +9195,9 @@ async function renderCustomSources() {
         list = list.filter(item => item.owner !== 'open');
     }
 
-    // 所有用户都可以看到公开源，但只有管理员可以管理它们
-    // 公开源过滤逻辑：只有在启用了公开源限制且用户未登录时才过滤
-    if (list && isPublicRestrictionActive) {
+    // 只有管理员才能看到公开源
+    // 普通登录用户和未登录用户都不能看到公开源
+    if (list && !isAdmin) {
         list = list.filter(item => item.owner !== 'open');
     }
 
