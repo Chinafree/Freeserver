@@ -3082,28 +3082,25 @@ function updateAdminUI() {
     const isAdmin = !!localStorage.getItem('lx_admin_password');
     const isPublic = !currentListData?.username || currentListData?.username === 'default';
 
-    // 自定义源部分的标签和按钮
-    const adminTag = document.getElementById('settings-admin-tag');
-    const loginBtn = document.getElementById('btn-admin-login');
-    const logoutBtn = document.getElementById('btn-admin-logout');
-    const scopeTag = document.getElementById('settings-source-scope-tag');
+    // 自定义源管理容器 - 仅管理员可见
+    const customSourceContainer = document.getElementById('custom-source-management-container');
+    if (customSourceContainer) {
+        customSourceContainer.classList.toggle('hidden', !isAdmin);
+    }
 
-    if (adminTag) adminTag.classList.toggle('hidden', !isAdmin);
-    if (logoutBtn) logoutBtn.classList.toggle('hidden', !isAdmin);
-    if (loginBtn) {
-        loginBtn.classList.toggle('hidden', isAdmin || !window.lx_config?.['user.enablePublicRestriction'] || !isPublic);
-    }
-    const manageBtn = document.getElementById('btn-custom-source-manage');
-    if (manageBtn) {
-        // 自定义源管理仅对管理员可见
-        manageBtn.classList.toggle('hidden', !isAdmin);
-    }
+    // 管理员登录/登出按钮 (在容器外面，对所有用户可见)
+    const logoutBtn = document.getElementById('btn-admin-logout');
+    const loginBtn = document.getElementById('btn-admin-login');
     
+    if (logoutBtn) logoutBtn.classList.toggle('hidden', !isAdmin);
+    if (loginBtn) loginBtn.classList.toggle('hidden', isAdmin);
+
     // 搜索框旁边的自定义源管理按钮也仅对管理员可见
     const searchBtn = document.getElementById('btn-custom-source-search');
     if (searchBtn) {
         searchBtn.classList.toggle('hidden', !isAdmin);
     }
+    const scopeTag = document.getElementById('settings-source-scope-tag');
     if (scopeTag) {
         scopeTag.classList.toggle('hidden', !isPublic);
     }

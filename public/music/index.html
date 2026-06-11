@@ -2171,7 +2171,18 @@
 
                         <!-- System Settings Panel -->
                         <div id="settings-panel-system" class="space-y-6 animate-fade-in">
-                            <div>
+                            <!-- 管理员登录区域 -->
+                            <div class="flex flex-wrap items-center gap-x-2 gap-y-2.5">
+                                <button id="btn-admin-logout" onclick="handleAdminLogout()"
+                                    class="ml-auto text-[10px] px-3 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-all border border-red-100 hidden">退出管理员</button>
+                                <button id="btn-admin-login" onclick="handleAdminLogin()"
+                                    class="ml-auto text-[10px] px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full hover:bg-emerald-100 transition-all border border-emerald-100 flex items-center gap-1.5">
+                                    <i class="fas fa-user-shield"></i> 管理员登录
+                                </button>
+                            </div>
+
+                            <!-- 自定义源管理容器 - 仅管理员可见 -->
+                            <div id="custom-source-management-container" class="hidden">
                                 <div class="flex flex-wrap items-center gap-x-2 gap-y-2.5 mb-3">
                                     <div class="flex items-center gap-2">
                                         <h3 class="font-bold text-emerald-500 flex items-center gap-2">
@@ -2180,14 +2191,8 @@
                                         <div id="settings-source-scope-tag" class="hidden flex items-center gap-1">
                                         </div>
                                         <span id="settings-admin-tag"
-                                            class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-500 whitespace-nowrap hidden">管理员</span>
+                                            class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-500 whitespace-nowrap">管理员</span>
                                     </div>
-                                    <button id="btn-admin-logout" onclick="handleAdminLogout()"
-                                        class="ml-auto text-[10px] px-3 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-all border border-red-100 hidden">退出管理员</button>
-                                    <button id="btn-admin-login" onclick="handleAdminLogin()"
-                                        class="ml-auto text-[10px] px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full hover:bg-emerald-100 transition-all border border-emerald-100 flex items-center gap-1.5 hidden">
-                                        <i class="fas fa-user-shield"></i> 管理员登录
-                                    </button>
                                 </div>
                                 <p class="text-xs t-text-muted mb-4 font-medium uppercase tracking-wider">
                                     管理和配置第三方音乐源脚本
