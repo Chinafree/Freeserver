@@ -9206,9 +9206,8 @@ async function renderCustomSources() {
     // 控制模态框头部的工具栏显示/隐藏
     const toolbar = document.getElementById('custom-source-toolbar');
     if (toolbar) {
-        // 权限判定：如果是公开访问受限模式，且当前非管理员且非登录用户，则隐藏上传/导入工具栏
-        const canManageGlobal = isAdmin || isUser || !isPublicRestrictionEnabled;
-        toolbar.classList.toggle('hidden', shouldShowHidden || !canManageGlobal);
+        // 权限判定：只有管理员才能管理自定义源
+        toolbar.classList.toggle('hidden', shouldShowHidden || !isAdmin);
     }
 
     // 渲染目标容器 ID 列表：模态框内 & 设置界面内
