@@ -42,5 +42,6 @@ module.exports = {
     "tx",
     "wy"
   ],
-  "cache.namingPattern": "standard"
+  "cache.namingPattern": "standard",
+  "system.allowUnsafeVM": false
 }
