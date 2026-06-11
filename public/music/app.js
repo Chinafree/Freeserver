@@ -9120,6 +9120,9 @@ async function fetchCustomSources() {
         const adminPass = localStorage.getItem('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
+        // 始终获取公开源，服务器端会自动合并用户源
+        // 当 username='default' 时，只返回公开源
+        // 当 username='某个用户' 时，返回公开源 + 用户源（用户源优先）
         const res = await fetch(`/api/custom-source/list?username=${username}`, {
             headers: headers
         });
@@ -9192,8 +9195,9 @@ async function renderCustomSources() {
         list = list.filter(item => item.owner !== 'open');
     }
 
-    // [修复] 只有 admin 用户才能看到公开源
-    if (list && !isAdmin) {
+    // 所有用户都可以看到公开源，但只有管理员可以管理它们
+    // 公开源过滤逻辑：只有在启用了公开源限制且用户未登录时才过滤
+    if (list && isPublicRestrictionActive) {
         list = list.filter(item => item.owner !== 'open');
     }
 
