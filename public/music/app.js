@@ -8797,6 +8797,8 @@ window.resetAllSettings = resetAllSettings;
 // Helper to Push Changes to Remote
 async function pushDataChange() {
     if (!currentListData) return;
+    // 检查 SyncManager 和 client 是否已初始化
+    if (!window.SyncManager || !window.SyncManager.client) return;
     try {
         await window.SyncManager.push(currentListData);
         console.log('Data Pushed to Remote');
@@ -9061,10 +9063,11 @@ async function uploadCustomSource(filename, content, type, allowUnsafeVM = false
     const adminPass = localStorage.getItem('lx_admin_password');
     if (adminPass) headers['x-frontend-auth'] = adminPass;
 
-    // [修复] 管理员上传的源默认放到公共区 (open)，让所有用户都可以使用
-    // 如果不是管理员，则上传到当前用户名下
+    // 根据管理员身份和公开源开关状态决定上传位置
     const isAdmin = !!adminPass;
-    const targetUsername = isAdmin ? 'open' : (currentListData?.username || 'default');
+    // 如果是管理员且开启了公开源，则上传到公共区；否则上传到当前用户名下
+    const isPublicEnabled = settings.enablePublicSources !== false;
+    const targetUsername = (isAdmin && isPublicEnabled) ? 'open' : (currentListData?.username || 'default');
 
     const response = await fetch('/api/custom-source/upload', {
         method: 'POST',

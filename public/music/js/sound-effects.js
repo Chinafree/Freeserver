@@ -126,6 +126,11 @@ window.soundEffects = (function () {
     async function initPitchShifter() {
         if (!audioContext) return;
         if (pitchShifterNode) return;
+        // 检查 audioWorklet 是否可用
+        if (!audioContext.audioWorklet) {
+            console.warn('[SoundEffects] AudioWorklet is not supported in this environment');
+            return;
+        }
 
         try {
             console.log('[SoundEffects] Loading Pitch Shifter Module from /music/js/pitch-shifter/phase-vocoder.js');
