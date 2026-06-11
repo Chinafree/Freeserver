@@ -1309,7 +1309,8 @@
 
                         <!-- System Settings Panel -->
                         <div id="settings-panel-system" class="space-y-6 animate-fade-in">
-                            <!-- 管理员登录区域 -->
+
+                            <!-- 管理员登录区域 - 所有用户可见 -->
                             <div class="flex flex-wrap items-center gap-x-2 gap-y-2.5">
                                 <button id="btn-admin-logout" onclick="handleAdminLogout()"
                                     class="ml-auto text-[10px] px-3 py-1 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-all border border-red-100 hidden">退出管理员</button>
@@ -1324,7 +1325,7 @@
                                 <div class="flex flex-wrap items-center gap-x-2 gap-y-2.5 mb-3">
                                     <div class="flex items-center gap-2">
                                         <h3 class="font-bold text-emerald-500 flex items-center gap-2">
-                                            <i class="fas fa-plug text-sm"></i> 自定义源(Custom Source)
+                                            <i class="fas fa-plug text-sm"></i> 自定义源管理
                                         </h3>
                                         <div id="settings-source-scope-tag" class="hidden flex items-center gap-1">
                                         </div>
@@ -1342,8 +1343,7 @@
                                     <div class="flex-1 min-w-[200px]">
                                         <div class="font-black t-text-main text-base md:text-lg">自定义源管理</div>
                                         <div class="text-xs t-text-muted mt-1 font-medium italic opacity-80">
-                                            Custom
-                                            Source Management</div>
+                                            Custom Source Management</div>
                                     </div>
                                     <button id="btn-custom-source-manage" onclick="openCustomSourceModal()"
                                         class="flex-shrink-0 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-xl shadow-lg shadow-emerald-200/50 hover:shadow-emerald-300/50 transition-all hover:scale-105 active:scale-95 flex items-center gap-2">
@@ -1351,9 +1351,8 @@
                                     </button>
                                 </div>
 
-                                <!-- 已上传的源列表 (Settings View Mirror) -->
+                                <!-- 已上传的源列表 -->
                                 <div id="settings-custom-sources-list" class="space-y-2">
-                                    <!-- 列表将在此处渲染 -->
                                     <div class="text-xs t-text-muted text-center py-2">暂无数据 (JS未加载)</div>
                                 </div>
 
@@ -1364,8 +1363,7 @@
                                             启用公开源 (Public List)
                                             <span class="setting-tooltip-trigger ml-1">
                                                 <i class="fas fa-question-circle"></i>
-                                                <span
-                                                    class="setting-tooltip-content">开启后，您上传的自定义源将可以被其他用户在公共源列表中看到。</span>
+                                                <span class="setting-tooltip-content">开启后，您上传的自定义源将可以被其他用户在公共源列表中看到。</span>
                                             </span>
                                         </div>
                                     </div>
@@ -1378,6 +1376,27 @@
                                     </label>
                                 </div>
                             </div>
+
+                            <!-- 源与基础设置 -->
+                            <div class="col-span-full pt-2 space-y-4">
+                                <h4 class="text-sm font-bold t-text-main flex items-center">
+                                    <i class="fas fa-server mr-2 text-emerald-500"></i> 基础设置
+                                </h4>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <!-- 默认音质 -->
+                                    <div
+                                        class="t-bg-panel rounded-xl border t-border-main p-4 hover:shadow-sm transition-shadow flex flex-col gap-3">
+                                        <h4 class="text-sm font-bold t-text-main flex items-center">
+                                            <i class="fas fa-music mr-2 text-emerald-500"></i> 默认音质
+                                            <span class="setting-tooltip-trigger ml-1">
+                                                <i class="fas fa-question-circle"></i>
+                                                <span class="setting-tooltip-content">实际播放音质取决于歌曲支持的最高音质，系统会自动降级</span>
+                                            </span>
+                                        </h4>
+                                        <select id="quality-select" onchange="changeQualityPreference(this.value)"
+                                            class="lm-select !w-full !py-2">
+                                            <option value="128k">标准 128K (流畅)</option>
                                             <option value="320k" selected>高品质 320K (推荐)</option>
                                             <option value="flac">无损 FLAC</option>
                                             <option value="flac24bit">无损 Hi-Res (最高)</option>
