@@ -8878,6 +8878,11 @@ async function uploadCustomSource(filename, content, type, allowUnsafeVM = false
     const adminPass = localStorage.getItem('lx_admin_password');
     if (adminPass) headers['x-frontend-auth'] = adminPass;
 
+    // [修复] 管理员上传的源默认放到公共区 (open)，让所有用户都可以使用
+    // 如果不是管理员，则上传到当前用户名下
+    const isAdmin = !!adminPass;
+    const targetUsername = isAdmin ? 'open' : (currentListData?.username || 'default');
+
     const response = await fetch('/api/custom-source/upload', {
         method: 'POST',
         headers: headers,
@@ -8885,7 +8890,7 @@ async function uploadCustomSource(filename, content, type, allowUnsafeVM = false
             filename,
             content,
             type,
-            username: currentListData?.username || 'default', // 使用当前登录用户
+            username: targetUsername, // 管理员上传到公共区
             allowUnsafeVM
         })
     });
