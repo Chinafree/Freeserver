@@ -1,0 +1,13 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "9527:9527"
+    volumes:
+      # 挂载本地代码目录
+      - ./public:/app/public
+      - ./config.js:/app/config.js
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=development
