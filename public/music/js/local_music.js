@@ -25,6 +25,7 @@ window.LocalMusicManager = {
     selectedSubPath: '',         // [New] 当前选中的子目录
     subPathModalMode: 'filter',  // [New] 'filter' | 'categorize'
     cacheKey: 'lx_lm_filters',   // [New] localStorage key
+    enableReMapping: false,
 
     saveFilters() {
         const filters = {
@@ -502,7 +503,7 @@ window.LocalMusicManager = {
                              </div>`;
             if (item.hasCover) {
                 const authToken = (window.getUserAuthHeaders ? window.getUserAuthHeaders()['x-user-token'] : null) || localStorage.getItem('lx_user_token') || '';
-                const coverUrl = `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}&t=${Date.now()}`;
+                const coverUrl = `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`;
                 coverHtml = `<img src="${coverUrl}" onerror="this.src='/music/assets/logo.svg'" loading="lazy" class="w-10 h-10 md:w-12 md:h-12 rounded-lg object-cover shadow-sm flex-shrink-0 border t-border-main mr-2.5 md:mr-4 ml-0.5 md:ml-3">`;
             }
 
@@ -564,7 +565,7 @@ window.LocalMusicManager = {
                                 ${(!missingID3 && !missingCover && !missingLyric) ? '<span class="px-1 py-0 bg-emerald-50 text-emerald-600 border border-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-900/30 rounded-sm font-medium">完整</span>' : ''}
                             </div>
 
-                            ${isUnindexed ? `
+                            ${(isUnindexed || this.enableReMapping) ? `
                                 <button onclick="window.LocalMusicManager.openManualIndexModal(${index})"
                                         class="px-1.5 py-0.5 bg-emerald-500 text-white rounded-md font-bold shadow-sm shadow-emerald-500/20 active:scale-95 transition-all flex items-center gap-1">
                                     <i class="fas fa-link text-[8px]"></i>关联
@@ -610,7 +611,7 @@ window.LocalMusicManager = {
                     <div class="hidden lg:block text-xs text-right pr-2 font-mono t-text-muted shrink-0 mr-1">
                         ${formatSize(item.size)}
                     </div>
-                    ${isUnindexed ? `
+                    ${(isUnindexed || this.enableReMapping) ? `
                         <button onclick="window.LocalMusicManager.openManualIndexModal(${index})"
                                 class="hidden sm:flex w-8 h-8 md:w-7 md:h-7 items-center justify-center rounded-full bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-sm shrink-0" title="手动关联">
                             <i class="fas fa-link text-[10px]"></i>
@@ -686,6 +687,30 @@ window.LocalMusicManager = {
         this.render(); // Re-render to show/hide checkboxes globally
     },
 
+    toggleReMapping() {
+        this.enableReMapping = !this.enableReMapping;
+
+        // Update button UI style
+        const desktopBtn = document.getElementById('lm-remap-toggle-btn');
+        const mobileBtn = document.getElementById('lm-remap-toggle-btn-mobile');
+
+        const updateBtnStyle = (btn) => {
+            if (!btn) return;
+            if (this.enableReMapping) {
+                btn.classList.remove('bg-gray-100', 'dark:bg-gray-700/50');
+                btn.classList.add('bg-emerald-500', 'text-white');
+            } else {
+                btn.classList.remove('bg-emerald-500', 'text-white');
+                btn.classList.add('bg-gray-100', 'dark:bg-gray-700/50');
+            }
+        };
+
+        updateBtnStyle(desktopBtn);
+        updateBtnStyle(mobileBtn);
+
+        this.render();
+    },
+
     selectAll() {
         this.displayData.forEach(item => this.selectedItems.add(item.filename));
         this.updateBatchUI();
@@ -717,7 +742,7 @@ window.LocalMusicManager = {
             ...item.songInfo,
             // Reconstruct full URL locally
             url: `/api/music/cache/file/${encodeURIComponent(username)}/${encodeURIComponent(item.filename)}?folder=${item.folder}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`,
-            pic: `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}&t=${Date.now()}`,
+            pic: `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`,
             isLocal: true,
             folder: item.folder
         };
@@ -727,7 +752,7 @@ window.LocalMusicManager = {
         const playlist = this.displayData.map(d => ({
             ...d.songInfo,
             url: `/api/music/cache/file/${encodeURIComponent(username)}/${encodeURIComponent(d.filename)}?folder=${d.folder}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`,
-            pic: `/api/music/cache/cover?filename=${encodeURIComponent(d.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}&t=${Date.now()}`,
+            pic: `/api/music/cache/cover?filename=${encodeURIComponent(d.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`,
             isLocal: true
         }));
 
@@ -1617,24 +1642,24 @@ window.LocalMusicManager = {
         if (this.subPathModalMode === 'filter') {
             // [All Directories] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 't-border-main hover:border-emerald-500 hover:bg-emerald-50/50'}">
-                    <i class="fas fa-layer-group text-xl t-text-muted group-hover:text-emerald-500"></i>
-                    <span class="text-xs font-bold t-text-main truncate w-full text-center">全部目录</span>
+                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                    <i class="fas fa-layer-group text-xl"></i>
+                    <span class="text-xs font-bold truncate w-full text-center">全部目录</span>
                 </button>
             `;
             // [Root Only] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('__ROOT__')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '__ROOT__' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 't-border-main hover:border-emerald-500 hover:bg-emerald-50/50'}">
-                    <i class="fas fa-home text-xl t-text-muted group-hover:text-emerald-500"></i>
-                    <span class="text-xs font-bold t-text-main truncate w-full text-center">根目录</span>
+                <button onclick="window.LocalMusicManager.selectSubPath('__ROOT__')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '__ROOT__' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                    <i class="fas fa-home text-xl"></i>
+                    <span class="text-xs font-bold truncate w-full text-center">根目录</span>
                 </button>
             `;
         } else {
             // [Categorize to Root] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 't-border-main hover:border-emerald-500 hover:bg-emerald-50/50'}">
-                    <i class="fas fa-home text-xl t-text-muted group-hover:text-emerald-500"></i>
-                    <span class="text-xs font-bold t-text-main truncate w-full text-center">移动到根目录 (/)</span>
+                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                    <i class="fas fa-home text-xl"></i>
+                    <span class="text-xs font-bold truncate w-full text-center">移动到根目录 (/)</span>
                 </button>
             `;
         }
@@ -1642,9 +1667,9 @@ window.LocalMusicManager = {
         dirs.forEach(dir => {
             const isActive = this.selectedSubPath === dir;
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('${dir.replace(/'/g, "\\'")}')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${isActive ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 't-border-main hover:border-emerald-500 hover:bg-emerald-50/50'}">
-                    <i class="fas fa-folder text-xl t-text-muted group-hover:text-emerald-500"></i>
-                    <span class="text-xs font-bold t-text-main truncate w-full text-center" title="${dir}">${dir}</span>
+                <button onclick="window.LocalMusicManager.selectSubPath('${dir.replace(/'/g, "\\'")}')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${isActive ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                    <i class="fas fa-folder text-xl"></i>
+                    <span class="text-xs font-bold truncate w-full text-center" title="${dir}">${dir}</span>
                 </button>
             `;
         });

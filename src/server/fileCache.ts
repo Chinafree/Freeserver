@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import http from 'http'
 import https from 'https'
+import crypto from 'crypto'
 import { PassThrough } from 'stream'
 const { MusicTagger, MetaPicture } = require('music-tag-native')
 import { buildLyrics, parseLyrics } from '../utils/lrcTool'
@@ -58,6 +59,21 @@ export const getCacheDir = (username?: string, isOnlyDownload?: boolean) => {
     // [New] Segment cache by username
     const userDirName = (username && username !== '_open' && username !== 'default') ? username : '_open'
 
+    const fullPath = path.join(baseDir, userDirName)
+    if (!fs.existsSync(fullPath)) {
+        fs.mkdirSync(fullPath, { recursive: true })
+    }
+    return fullPath
+}
+
+export const getCoverCacheDir = (username: string) => {
+    let baseDir = ''
+    if (currentCacheLocation === CACHE_ROOTS.DATA) {
+        baseDir = path.join(global.lx.dataPath, 'cover_cache')
+    } else {
+        baseDir = path.join(process.cwd(), 'cover_cache')
+    }
+    const userDirName = (username && username !== '_open' && username !== 'default') ? username : '_open'
     const fullPath = path.join(baseDir, userDirName)
     if (!fs.existsSync(fullPath)) {
         fs.mkdirSync(fullPath, { recursive: true })
@@ -214,6 +230,22 @@ const ensureDir = (username?: string, isOnlyDownload?: boolean) => {
     return dir
 }
 
+// Safe rename: try rename, fall back to copy+unlink if rename fails (cross-device, permissions, etc.)
+const safeRenameSync = (src: string, dst: string) => {
+    try {
+        fs.renameSync(src, dst)
+        return true
+    } catch (err) {
+        try {
+            fs.copyFileSync(src, dst)
+            fs.unlinkSync(src)
+            return true
+        } catch (err2) {
+            throw err // keep original error context
+        }
+    }
+}
+
 /**
  * 规范化歌曲 ID：确保带上 source 前缀，与索引中的 Key 保持一致
  */
@@ -346,29 +378,36 @@ export const syncCacheIndex = async (username?: string) => {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         if (!fs.existsSync(dir)) continue
 
-        // [Unified Enhancement] Recursive file walker
-        const getAllFiles = (dirPath: string, acc: string[] = [], base: string = dirPath) => {
-            if (!fs.existsSync(dirPath)) return acc
-            const entries = fs.readdirSync(dirPath, { withFileTypes: true })
-            for (const entry of entries) {
-                const fullPath = path.join(dirPath, entry.name)
-                if (entry.isDirectory()) {
-                    getAllFiles(fullPath, acc, base)
-                } else {
-                    acc.push(path.relative(base, fullPath).replace(/\\/g, '/'))
+        // [Unified Enhancement] Recursive file walker (asynchronous)
+        const getAllFilesAsync = async (dirPath: string, base: string = dirPath): Promise<string[]> => {
+            const acc: string[] = []
+            try {
+                const exists = await fs.promises.access(dirPath).then(() => true).catch(() => false)
+                if (!exists) return acc
+                const entries = await fs.promises.readdir(dirPath, { withFileTypes: true })
+                for (const entry of entries) {
+                    const fullPath = path.join(dirPath, entry.name)
+                    if (entry.isDirectory()) {
+                        const subFiles = await getAllFilesAsync(fullPath, base)
+                        acc.push(...subFiles)
+                    } else {
+                        acc.push(path.relative(base, fullPath).replace(/\\/g, '/'))
+                    }
                 }
+            } catch (e) {
+                console.error(`[fileCache] error walking path: ${dirPath}`, e)
             }
             return acc
         }
 
-        const files = getAllFiles(dir)
+        const files = await getAllFilesAsync(dir)
         for (const file of files) {
             if (file === 'cache_index.json' || file === 'music_index.json') continue
             const ext = path.extname(file).toLowerCase()
             if (!extensions.includes(ext)) continue
 
             const filePath = path.join(dir, file)
-            const stats = fs.statSync(filePath)
+            const stats = await fs.promises.stat(filePath)
 
             // Try to find if this file is already known in index by its filename
             let existingEntry = filenameToItemMap.get(file)
@@ -421,7 +460,7 @@ export const syncCacheIndex = async (username?: string) => {
 
             // Always check for companion lyric file
             const lrcFile = file.substring(0, file.length - ext.length) + '.lrc'
-            const hasLyricOnDisk = fs.existsSync(path.join(dir, lrcFile))
+            const hasLyricOnDisk = await fs.promises.access(path.join(dir, lrcFile)).then(() => true).catch(() => false)
 
             let finalQuality = quality || 'unknown'
 
@@ -532,6 +571,9 @@ export const syncCacheIndex = async (username?: string) => {
             } else if (!oldKey) {
                 index.set(compositeKey, existing!)
             }
+
+            // Yield control back to Node.js event loop
+            await new Promise(resolve => setImmediate(resolve))
         }
 
         // Remove deleted files from index
@@ -832,8 +874,24 @@ export const linkLocalFile = async (oldFilename: string, songInfo: any, username
  */
 export const getCacheCover = (filename: string, username?: string) => {
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
-    const roots: Array<'cache' | 'music'> = ['cache', 'music']
 
+    // Cover cache lookup
+    try {
+        const hash = crypto.createHash('md5').update(filename).digest('hex')
+        const coverCacheDir = getCoverCacheDir(normalizedUsername)
+        const binPath = path.join(coverCacheDir, `${hash}.bin`)
+        const mimePath = path.join(coverCacheDir, `${hash}.mime`)
+        
+        if (fs.existsSync(binPath) && fs.existsSync(mimePath)) {
+            const data = fs.readFileSync(binPath)
+            const mime = fs.readFileSync(mimePath, 'utf8')
+            return { data, mime }
+        }
+    } catch (e) {
+        console.error(`[Cache] Error reading cover cache for: ${filename}`, e)
+    }
+
+    const roots: Array<'cache' | 'music'> = ['cache', 'music']
     for (const folder of roots) {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         const filePath = path.join(dir, filename) // [Fix] Allow subfolders
@@ -845,12 +903,23 @@ export const getCacheCover = (filename: string, username?: string) => {
                 const pics = tagger.pictures
                 if (pics && pics.length > 0) {
                     const pic = pics[0]
-                    const result = {
-                        data: Buffer.from(pic.data),
-                        mime: pic.mimeType || 'image/jpeg'
-                    }
+                    const mime = pic.mimeType || 'image/jpeg'
+                    const data = Buffer.from(pic.data)
                     tagger.dispose()
-                    return result
+
+                    // Save to cover cache
+                    try {
+                        const hash = crypto.createHash('md5').update(filename).digest('hex')
+                        const coverCacheDir = getCoverCacheDir(normalizedUsername)
+                        const binPath = path.join(coverCacheDir, `${hash}.bin`)
+                        const mimePath = path.join(coverCacheDir, `${hash}.mime`)
+                        fs.writeFileSync(binPath, data)
+                        fs.writeFileSync(mimePath, mime)
+                    } catch (e) {
+                        console.error(`[Cache] Failed to write cover cache for ${filename}:`, e)
+                    }
+
+                    return { data, mime }
                 }
                 tagger.dispose()
             } catch (e) {
@@ -895,6 +964,16 @@ export const removeCacheFile = (filename: string, username?: string) => {
             if (item) {
                 indexManager.remove(normalizedUsername, item.id, folder)
             }
+
+            // [New] Delete associated cover cache if exists
+            try {
+                const hash = crypto.createHash('md5').update(filename).digest('hex')
+                const coverCacheDir = getCoverCacheDir(normalizedUsername)
+                const binPath = path.join(coverCacheDir, `${hash}.bin`)
+                const mimePath = path.join(coverCacheDir, `${hash}.mime`)
+                if (fs.existsSync(binPath)) fs.unlinkSync(binPath)
+                if (fs.existsSync(mimePath)) fs.unlinkSync(mimePath)
+            } catch (e) {}
 
             deleted = true
         }
@@ -1511,6 +1590,7 @@ export const switchFolder = async (filenames: string[], username: string | undef
     for (const filename of filenames) {
         let sourceFolder: 'cache' | 'music' | null = null
         let item: CacheItem | null = null
+        let inMusic: CacheItem | undefined = undefined
 
         // Find which folder it belongs to
         const inCache = Array.from(cacheIndex.values()).find(i => i.filename === filename)
@@ -1518,7 +1598,7 @@ export const switchFolder = async (filenames: string[], username: string | undef
             sourceFolder = 'cache'
             item = inCache
         } else {
-            const inMusic = Array.from(musicIndex.values()).find(i => i.filename === filename)
+            inMusic = Array.from(musicIndex.values()).find(i => i.filename === filename)
             if (inMusic) {
                 sourceFolder = 'music'
                 item = inMusic
@@ -1526,6 +1606,7 @@ export const switchFolder = async (filenames: string[], username: string | undef
         }
 
         if (!sourceFolder || !item) {
+            console.log(`[FileCache][DEBUG] switchFolder: not found in indexes`, { filename, inCache: !!inCache, inMusic: !!inMusic })
             failCount++
             continue
         }
@@ -1546,62 +1627,82 @@ export const switchFolder = async (filenames: string[], username: string | undef
         const targetPath = path.join(targetDir, filename)
 
         try {
-            if (fs.existsSync(sourcePath)) {
-                // Ensure target directory exists (though getCacheDir should have ensured it)
-                if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
+            console.log(`[FileCache][DEBUG] switchFolder start`, { filename, sourceFolder, targetFolder, sourcePath, targetPath })
+            const srcExists = fs.existsSync(sourcePath)
+            const tgtExists = fs.existsSync(targetPath)
+            console.log(`[FileCache][DEBUG] existence`, { filename, srcExists, tgtExists })
+
+            if (srcExists) {
+                // Ensure target directory exists (including any nested subfolders)
+                const targetPathDir = path.dirname(targetPath)
+                if (!fs.existsSync(targetPathDir)) fs.mkdirSync(targetPathDir, { recursive: true })
 
                 // Check collision in target folder
                 if (fs.existsSync(targetPath)) {
-                    // If target already exists, skip this file
                     console.log(`[FileCache] Move conflict: ${filename} already exists in ${targetFolder}, skipping.`)
                     failCount++
                     continue
                 }
 
-
                 // Move audio file
-                fs.renameSync(sourcePath, targetPath)
+                try {
+                    safeRenameSync(sourcePath, targetPath)
+                    console.log(`[FileCache][DEBUG] moved audio`, { filename, sourcePath, targetPath })
+                } catch (moveErr) {
+                    const errMsg = moveErr instanceof Error ? moveErr.stack : String(moveErr)
+                    console.error(`[FileCache][ERROR] move audio failed for ${filename}:`, errMsg)
+                    failCount++
+                    continue
+                }
 
                 // Move lyric file if exists
                 if (item.lyricFilename) {
                     const sourceLrcPath = path.join(sourceDir, item.lyricFilename)
                     const targetLrcPath = path.join(targetDir, item.lyricFilename)
+                    const targetLrcDir = path.dirname(targetLrcPath)
                     if (fs.existsSync(sourceLrcPath)) {
+                        if (!fs.existsSync(targetLrcDir)) fs.mkdirSync(targetLrcDir, { recursive: true })
                         if (fs.existsSync(targetLrcPath)) fs.unlinkSync(targetLrcPath)
-                        fs.renameSync(sourceLrcPath, targetLrcPath)
+                        try {
+                            safeRenameSync(sourceLrcPath, targetLrcPath)
+                            console.log(`[FileCache][DEBUG] moved lyric`, { filename, sourceLrcPath, targetLrcPath })
+                        } catch (lrErr) {
+                            const errMsg = lrErr instanceof Error ? lrErr.stack : String(lrErr)
+                            console.error(`[FileCache][ERROR] move lyric failed for ${filename}:`, errMsg)
+                        }
+                    } else {
+                        console.log(`[FileCache][DEBUG] lyric not found`, { filename, sourceLrcPath })
                     }
                 }
 
                 // Update Index
-                indexManager.remove(normalizedUsername, item.id, sourceFolder, item.quality)
+                const removed = indexManager.remove(normalizedUsername, item.id, sourceFolder, item.quality)
+                console.log(`[FileCache][DEBUG] index remove result`, { filename, removed })
                 item.folder = targetFolder
                 indexManager.update(normalizedUsername, item, targetFolder)
-
                 successCount++
             } else {
+                console.log(`[FileCache][DEBUG] source missing`, { filename, sourcePath })
                 failCount++
             }
         } catch (e) {
-            console.error(`[FileCache] Failed to move ${filename} from ${sourceFolder} to ${targetFolder}:`, e)
+            const errMsg = e instanceof Error ? e.stack : String(e)
+            console.error(`[FileCache] Failed to move ${filename}:`, errMsg)
             failCount++
         }
+        }
+
+        return { successCount, failCount }
     }
 
-    return { successCount, failCount }
-}
+    export const switchBaseLocation = async (filenames: string[], username: string | undefined) => {
+        const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+        let successCount = 0
+        let failCount = 0
+        const sourceLoc = currentCacheLocation
+        const targetLoc = sourceLoc === CACHE_ROOTS.DATA ? CACHE_ROOTS.ROOT : CACHE_ROOTS.DATA
 
-/**
- * Switch files between 'ROOT' and 'DATA' base locations
- */
-export const switchBaseLocation = async (filenames: string[], username: string | undefined) => {
-    const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
-    const sourceLoc = currentCacheLocation
-    const targetLoc = sourceLoc === CACHE_ROOTS.ROOT ? CACHE_ROOTS.DATA : CACHE_ROOTS.ROOT
-
-    let successCount = 0
-    let failCount = 0
-
-    const folders: Array<'cache' | 'music'> = ['cache', 'music']
+        const folders: Array<'cache' | 'music'> = ['cache', 'music']
 
     // Helper to get dir for a specific location
     const getLocalDir = (folder: string, loc: string) => {
@@ -1639,7 +1740,8 @@ export const switchBaseLocation = async (filenames: string[], username: string |
 
         try {
             if (fs.existsSync(sourcePath)) {
-                if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true })
+                const targetPathDir = path.dirname(targetPath)
+                if (!fs.existsSync(targetPathDir)) fs.mkdirSync(targetPathDir, { recursive: true })
 
                 // Check collision in target location
                 if (fs.existsSync(targetPath)) {
@@ -1649,15 +1751,17 @@ export const switchBaseLocation = async (filenames: string[], username: string |
                 }
 
                 // Move audio file
-                fs.renameSync(sourcePath, targetPath)
+                safeRenameSync(sourcePath, targetPath)
 
                 // Move lyrics
                 if (item.lyricFilename) {
                     const sourceLrcPath = path.join(sourceDir, item.lyricFilename)
                     const targetLrcPath = path.join(targetDir, item.lyricFilename)
+                    const targetLrcDir = path.dirname(targetLrcPath)
                     if (fs.existsSync(sourceLrcPath)) {
+                        if (!fs.existsSync(targetLrcDir)) fs.mkdirSync(targetLrcDir, { recursive: true })
                         if (fs.existsSync(targetLrcPath)) fs.unlinkSync(targetLrcPath)
-                        fs.renameSync(sourceLrcPath, targetLrcPath)
+                        safeRenameSync(sourceLrcPath, targetLrcPath)
                     }
                 }
 
@@ -1756,15 +1860,15 @@ export const categorizeFiles = async (filenames: string[], targetSubPath: string
 
         try {
             // Physically move file
-            if (fs.existsSync(oldPath)) {
-                fs.renameSync(oldPath, newPath)
+                if (fs.existsSync(oldPath)) {
+                safeRenameSync(oldPath, newPath)
 
                 // Move lyrics if exist
                 const ext = path.extname(filename)
                 const oldLrcPath = oldPath.substring(0, oldPath.length - ext.length) + '.lrc'
                 const newLrcPath = newPath.substring(0, newPath.length - ext.length) + '.lrc'
                 if (fs.existsSync(oldLrcPath)) {
-                    fs.renameSync(oldLrcPath, newLrcPath)
+                    safeRenameSync(oldLrcPath, newLrcPath)
                 }
 
                 // Update index
@@ -1781,8 +1885,8 @@ export const categorizeFiles = async (filenames: string[], targetSubPath: string
             }
 
             successCount++
-        } catch (e) {
-            console.error(`[FileCache] Categorize failed for ${filename}:`, e)
+        } catch (e: any) {
+            console.error('[FileCache] Categorize failed for ' + filename + ':', e)
             failCount++
         }
     }

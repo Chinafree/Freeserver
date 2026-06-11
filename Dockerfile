@@ -7,19 +7,12 @@ RUN apk add --no-cache \
   make \
   python3 \
   py3-pip \
-  tar \
-  unzip \
-  ca-certificates \
-  && ln -sf python3 /usr/bin/python \
-  && (apk add --no-cache chromaprint || true)
-
-RUN npm install --ignore-scripts --no-audit --no-fund
-
-RUN npm run build 2>&1 | tee build.log || (cat build.log && exit 1)
-
-RUN rm -rf node_modules && npm install --omit=dev --no-audit --no-fund
-
-RUN mkdir build-output \
+  nodejs \
+  npm \
+  && (apk add --no-cache chromaprint || true) \
+  && npm install --ignore-scripts --no-audit --no-fund && npm run build \
+  && rm -rf node_modules && npm install --omit=dev --no-audit --no-fund \
+  && mkdir -p build-output \
   && mv server node_modules config.js index.js package.json public -t build-output
 
 
