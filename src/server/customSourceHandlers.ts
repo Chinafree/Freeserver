@@ -222,6 +222,8 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
         fs.writeFileSync(scriptPath, content, 'utf-8')
 
         // 更新元数据
+        // 公开源默认启用，其他用户源默认禁用
+        const isPublicSource = targetOwner === 'open'
         sources.push({
             id,
             name: metadata.name || filename,
@@ -231,7 +233,7 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
             homepage: metadata.homepage || '',
             size: Buffer.byteLength(content, 'utf-8'),
             supportedSources, // 保存支持的源
-            enabled: false, // 默认禁用
+            enabled: isPublicSource, // 公开源默认启用，用户源默认禁用
             uploadTime: new Date().toISOString(),
             allowUnsafeVM: !!requireUnsafe || !!allowUnsafeVM,
             requireUnsafe: !!requireUnsafe

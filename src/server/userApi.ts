@@ -911,12 +911,30 @@ export function getLoadedApis() {
 // clientUsername: 调用者的用户名。如果未提供，则只能检查 open 源
 export function isSourceSupported(source: string, clientUsername?: string): boolean {
     for (const [apiId, api] of loadedApis) {
-        if (!api.info.enabled || !api.info.sources || !api.info.sources[source]) {
+        if (!api.info.sources || !api.info.sources[source]) {
             continue
         }
 
         // 权限检查
-        if (api.info.owner === 'open' || (clientUsername && api.info.owner === clientUsername)) {
+        if (api.info.owner === 'open') {
+            // 公开源：检查是否有该用户的启用状态配置
+            let isEnabled = api.info.enabled
+            if (clientUsername && clientUsername !== 'default') {
+                const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
+                const statesPath = path.join(dataPath, 'users', 'source', clientUsername, 'states.json')
+                try {
+                    if (fs.existsSync(statesPath)) {
+                        const states = JSON.parse(fs.readFileSync(statesPath, 'utf-8'))
+                        if (states[api.info.id] && typeof states[api.info.id].enabled === 'boolean') {
+                            isEnabled = states[api.info.id].enabled
+                        }
+                    }
+                } catch (e) { }
+            }
+            if (!isEnabled) continue
+            return true
+        } else if (clientUsername && api.info.owner === clientUsername) {
+            if (!api.info.enabled) continue
             return true
         }
     }
