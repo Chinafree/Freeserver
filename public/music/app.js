@@ -9909,14 +9909,50 @@ async function handleTogglePlaylist(listId, btnElement) {
     updateGridItemVisuals(btnElement, willAdd);
 
     try {
-        if (willAdd) {
-            targetListArray.unshift(cleanedSong);
+        // 同步数据到服务器（先同步再更新本地状态，确保服务器操作成功）
+        const isRemoteSync = window.SyncManager && window.SyncManager.mode === 'remote' && window.SyncManager.client && window.SyncManager.client.isConnected;
+        
+        if (isRemoteSync) {
+            // 远程模式：先更新本地状态，然后使用 SyncManager 推送
+            if (willAdd) {
+                targetListArray.unshift(cleanedSong);
+            } else {
+                const idx = targetListArray.findIndex(s => s.id === targetId);
+                if (idx >= 0) targetListArray.splice(idx, 1);
+            }
+            await pushDataChange();
         } else {
-            const idx = targetListArray.findIndex(s => s.id === targetId);
-            if (idx >= 0) targetListArray.splice(idx, 1);
+            // 本地模式：调用 API 同步后端存储
+            if (willAdd) {
+                // 添加歌曲
+                const res = await fetch('/api/music/user/list/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getUserAuthHeaders() },
+                    body: JSON.stringify({
+                        listId: listId,
+                        musicInfos: [cleanedSong]
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                // 更新本地状态
+                targetListArray.unshift(cleanedSong);
+            } else {
+                // 删除歌曲
+                const res = await fetch('/api/music/user/list/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getUserAuthHeaders() },
+                    body: JSON.stringify({
+                        listId: listId,
+                        songIds: [targetId]
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                // 更新本地状态
+                const idx = targetListArray.findIndex(s => s.id === targetId);
+                if (idx >= 0) targetListArray.splice(idx, 1);
+            }
         }
-
-        await pushDataChange();
+        
         renderMyLists(currentListData);
     } catch (e) {
         showError('同步失败: ' + e.message);
