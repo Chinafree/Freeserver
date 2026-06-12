@@ -8797,13 +8797,30 @@ window.resetAllSettings = resetAllSettings;
 // Helper to Push Changes to Remote
 async function pushDataChange() {
     if (!currentListData) return;
-    // 检查 SyncManager 和 client 是否已初始化
-    if (!window.SyncManager || !window.SyncManager.client) return;
-    try {
-        await window.SyncManager.push(currentListData);
-        console.log('Data Pushed to Remote');
-    } catch (e) {
-        console.error('Push Failed', e);
+    
+    // 检查是否有有效的 SyncManager 客户端
+    const hasValidSyncManager = window.SyncManager && window.SyncManager.client;
+    
+    if (hasValidSyncManager) {
+        try {
+            await window.SyncManager.push(currentListData);
+            console.log('Data Pushed to Remote');
+        } catch (e) {
+            console.error('Push Failed', e);
+        }
+    } else {
+        // 本地模式 fallback：直接调用 API 同步整个列表数据
+        try {
+            const res = await fetch('/api/user/list', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getUserAuthHeaders() },
+                body: JSON.stringify(currentListData)
+            });
+            if (!res.ok) throw new Error(await res.text());
+            console.log('Data Pushed via API');
+        } catch (e) {
+            console.error('Push Failed via API', e);
+        }
     }
 }
 
