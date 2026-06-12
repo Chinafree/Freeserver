@@ -28,34 +28,44 @@
     <link rel="manifest" href="/music/manifest.json">
     <link rel="stylesheet" href="css/theme_variables.css">
     
-    <!-- Tailwind CSS CDN with SRI and fallback -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/tailwindcss/3.4.14/tailwindcss.min.js"
-            integrity="sha384-28lK656T+2qN25Z6x49WZ5UJwJz+L9f8y2XaV7Qc9x9H0cZt1e64s2G9jY0UfU"
+    <!-- 
+        jsDelivr + GitHub CDN 方案
+        格式: https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/{文件路径}
+        优势: 免费、稳定、中国访问速度快、版本可控
+    -->
+    
+    <!-- Tailwind CSS - jsDelivr + GitHub -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/tailwindcss.js"
             crossorigin="anonymous"></script>
     <script>window.tailwindcss||document.write('<script src="assets/tailwindcss.js"><\/script>')</script>
     
     <script src="js/tailwind_setup.js"></script>
     
-    <!-- FontAwesome CDN with SRI and fallback -->
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-          integrity="sha384-z4tVnCr80ZcL0iufVdGQSUzNvJsKjEtqYZjiQrrYKlpGow+btDHDfQWkFjoaz"
-          crossorigin="anonymous" onload="this.onerror=null;this.href='assets/fontawesome/css/all.min.css';">
+    <!-- FontAwesome - jsDelivr + GitHub -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css"
+          crossorigin="anonymous">
+    <script>
+        (function(){
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css';
+            link.onerror = function(){ this.href = 'assets/fontawesome/css/all.min.css'; };
+            document.head.appendChild(link);
+        })();
+    </script>
     
-    <!-- CryptoJS CDN with SRI and fallback -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"
-            integrity="sha384-2Kk6Xa0sJQ0i0t60xXGFW68u7JInk392aS7pTkvlrF1l5Wq6QH5Z7nxvFt0O"
+    <!-- CryptoJS - jsDelivr + GitHub -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/js/crypto-js.min.js"
             crossorigin="anonymous"></script>
     <script>window.CryptoJS||document.write('<script src="js/crypto-js.min.js"><\/script>')</script>
     
-    <!-- marked.js CDN with SRI and fallback -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/marked/15.0.12/marked.min.js"
-            integrity="sha384-5gX6S8dN1y0K7s5u2F9J6E4/8Z7h8J4a5H5t6b6Q4L7c2K6L6J6L6K6L6K6L6"
+    <!-- marked.js - jsDelivr + GitHub -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/js/marked.min.js"
             crossorigin="anonymous"></script>
     <script>window.marked||document.write('<script src="js/marked.min.js"><\/script>')</script>
     
-    <!-- Sortable.js CDN with SRI and fallback -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/Sortable/1.15.2/Sortable.min.js"
-            integrity="sha384-qZ2z5Q8t9Y6V3R3Z2e1w0R9Q6Q6V9Q6V9Q6V9Q6V9Q6V9Q6V9Q6V9Q6V9Q6V"
+    <!-- Sortable.js - jsDelivr + GitHub -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/js/Sortable.min.js"
             crossorigin="anonymous"></script>
     <script>window.Sortable||document.write('<script src="js/Sortable.min.js"><\/script>')</script>
     
@@ -4703,9 +4713,8 @@
     <!-- External Scripts Section (Placed at the end for performance) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     
-    <!-- NoSleep.js CDN with SRI and fallback -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/noSleep/0.12.0/NoSleep.min.js"
-            integrity="sha384-7JQJ8r0K7v2vG9q9vG9q9vG9q9vG9q9vG9q9vG9q9vG9q9vG9q9vG9q9vG9q9"
+    <!-- NoSleep.js - jsDelivr + GitHub -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/js/NoSleep.min.js"
             crossorigin="anonymous"></script>
     <script>window.NoSleep||document.write('<script src="js/NoSleep.min.js"><\/script>')</script>
     
