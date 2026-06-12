@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LX Music Sync Server - 管理控制台</title>
+    <title>Freeserver - 管理控制台</title>
     <!-- Config MUST be loaded before PostHog -->
     <script>
         (function () {
@@ -27,22 +27,18 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="manifest" href="manifest.json">
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // 使用相对路径，它会自动基于 <base> 路径解析
-                navigator.serviceWorker.register('sw.js')
-                    .then(registration => {
-                        console.log('ServiceWorker registration successful');
-                    })
-                    .catch(err => {
-                        console.log('ServiceWorker registration failed: ', err);
-                    });
-            });
-        }
-    </script>
-    <script src="vendor/js/marked.min.js"></script>
-    <script src="music/assets/tailwindcss.js"></script>
+    
+    <!-- jsDelivr + GitHub CDN -->
+    <!-- marked.js -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/js/marked.min.js"
+            crossorigin="anonymous"></script>
+    <script>window.marked||document.write('<script src="vendor/js/marked.min.js"><\/script>')</script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/tailwindcss.js"
+            crossorigin="anonymous"></script>
+    <script>window.tailwindcss||document.write('<script src="music/assets/tailwindcss.js"><\/script>')</script>
+    
     <script>
         tailwind.config = {
             corePlugins: {
@@ -50,7 +46,20 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="music/assets/fontawesome/css/all.min.css">
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css"
+          crossorigin="anonymous">
+    <script>
+        (function(){
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css';
+            link.onerror = function(){ this.href = 'music/assets/fontawesome/css/all.min.css'; };
+            document.head.appendChild(link);
+        })();
+    </script>
+    
     <script src="js/ui-utils.js"></script>
     <script src="js/notification-engine.js"></script>
     <link href="vendor/fonts/inter.css" rel="stylesheet">
@@ -64,12 +73,23 @@
                 <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M9 18V5l12-2v13M6 15v8m6-8v8" />
                 </svg>
-                <h1>LX Sync Server</h1>
+                <h1>Free Music Server</h1>
             </div>
             <p class="login-subtitle">管理控制台</p>
+            
+            <!-- 醒目的播放器导航按钮 -->
+            <a href="/music" class="btn-player" id="player-nav-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18V5l12-2v13"></path>
+                    <circle cx="6" cy="18" r="3"></circle>
+                    <circle cx="21" cy="16" r="3"></circle>
+                </svg>
+                <span>🎵 进入音乐播放器</span>
+            </a>
+            
             <input type="password" id="access-password" placeholder="请输入访问密码" autocomplete="off" />
             <button id="login-btn" class="btn-primary">
-                <span>登录</span>
+                <span>登录管理控制台</span>
             </button>
             <p id="login-error" class="error-msg"></p>
         </div>

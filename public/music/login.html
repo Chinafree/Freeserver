@@ -7,8 +7,26 @@
     <title>Free Music Web</title>
     <script src="/js/config.js"></script>
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
-    <script src="assets/tailwindcss.js"></script>
+    
+    <!-- jsDelivr + GitHub CDN -->
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css"
+          crossorigin="anonymous">
+    <script>
+        (function(){
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/fontawesome/css/all.min.css';
+            link.onerror = function(){ this.href = 'assets/fontawesome/css/all.min.css'; };
+            document.head.appendChild(link);
+        })();
+    </script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/gh/Chinafree/Freeserver@main/public/music/assets/tailwindcss.js"
+            crossorigin="anonymous"></script>
+    <script>window.tailwindcss||document.write('<script src="assets/tailwindcss.js"><\/script>')</script>
+    
     <script src="js/tailwind_setup.js"></script>
     <style>
         body {
