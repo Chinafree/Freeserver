@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lx-music-web-v5';
+const CACHE_NAME = 'lx-music-web-v6'; // 更新版本号以触发新的 Service Worker 安装
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
