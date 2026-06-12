@@ -165,10 +165,16 @@
                         localStorage.setItem('lx_login_username', data.username)
                         localStorage.setItem('lx_sync_user', data.username)
                     }
+                    // 保存用户密码（用于数据同步）
+                    if (password) {
+                        localStorage.setItem('lx_sync_pass', password)
+                    }
                     // 保存用户 token（用于数据同步）
                     if (data.token) {
                         localStorage.setItem('lx_user_token', data.token)
                     }
+                    // 设置同步模式为本地模式
+                    localStorage.setItem('lx_sync_mode', 'local')
                     setTimeout(() => window.location.replace('./'), 300)
                 } else {
                     errorDiv.classList.remove('hidden')
