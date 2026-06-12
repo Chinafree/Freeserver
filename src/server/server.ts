@@ -226,15 +226,13 @@ export const verifyUserAuth = (req: IncomingMessage): string | null => {
     return null // Token 存在但无效/过期
   }
 
-  // 后端所有用户名密码明文校验逻辑
-  /*
+  // 用户名密码明文校验逻辑（用于本地模式同步）
   const username = req.headers['x-user-name'] as string
   const password = req.headers['x-user-password'] as string
   if (username && password) {
     const user = global.lx.config.users.find((u: any) => u.name === username && u.password === password)
     if (user) return username
   }
-  */
 
   return null
 }
