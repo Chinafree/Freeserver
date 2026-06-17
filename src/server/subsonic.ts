@@ -74,7 +74,7 @@ class SubsonicHandler {
         const base: any = {
             status: 'ok',
             version: this.VERSION,
-            type: 'lxserver',
+            type: 'free-music',
             serverVersion: this.SERVER_VERSION,
             openSubsonic: true,
         }
@@ -150,7 +150,7 @@ class SubsonicHandler {
                 'subsonic-response': {
                     status: 'failed',
                     version: this.VERSION,
-                    type: 'lxserver',
+                    type: 'free-music',
                     serverVersion: this.SERVER_VERSION,
                     openSubsonic: true,
                     error: { code, message },
@@ -311,8 +311,20 @@ class SubsonicHandler {
                 case 'updatePlaylist':
                     return this.handleUpdatePlaylist(res, username, params, format)
 
+                case 'createPlaylist':
+                    return this.handleCreatePlaylist(res, username, params, format)
+
+                case 'deletePlaylist':
+                    return this.handleDeletePlaylist(res, username, params, format)
+
+                case 'star':
+                    return this.handleStar(res, username, params, format, true)
+
+                case 'unstar':
+                    return this.handleStar(res, username, params, format, false)
+
                 case 'scrobble':
-                    return this.sendResponse(res, {}, format)
+                    return this.handleScrobble(req, res, username, params, format)
 
                 case 'getNowPlaying':
                     return this.sendResponse(res, { nowPlaying: { entry: [] } }, format)
@@ -495,11 +507,11 @@ class SubsonicHandler {
     private handleGetMusicFolders(res: http.ServerResponse, format: string) {
         if (format === 'json') {
             return this.sendResponse(res, {
-                musicFolders: { musicFolder: [{ id: 1, name: 'LX Music' }] },
+                musicFolders: { musicFolder: [{ id: 1, name: 'Free Music' }] },
             }, format)
         }
         return this.sendResponse(res, {
-            musicFolders: { children: { musicFolder: [{ attrs: { id: 1, name: 'LX Music' } }] } },
+            musicFolders: { children: { musicFolder: [{ attrs: { id: 1, name: 'Free Music' } }] } },
         }, format)
     }
 
@@ -617,39 +629,298 @@ class SubsonicHandler {
     private async handleUpdatePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
         const playlistId = params.get('playlistId')
         const songIndexToRemove = params.get('songIndexToRemove')
+        const songIdToRemove = params.get('songIdToRemove')
+        const name = params.get('name')
+        const comment = params.get('comment')
+        const public_ = params.get('public')
+        const appendSongIds = params.getAll('songIdToAdd')
 
         if (!playlistId) return this.sendError(res, 10, 'Required parameter is missing: playlistId', format)
 
-        // 目前 lxserver 下暂时只实现了通过索引删除 (OpenSubsonic 核心规范)
-        if (songIndexToRemove !== null) {
-            const index = parseInt(songIndexToRemove)
-            if (isNaN(index)) return this.sendError(res, 0, 'Invalid songIndexToRemove', format)
+        try {
+            const userSpace = getUserSpace(username)
+            const listData = await userSpace.listManage.getListData()
 
-            try {
-                const userSpace = getUserSpace(username)
+            // 1. 删除单首：按索引
+            if (songIndexToRemove !== null) {
+                const index = parseInt(songIndexToRemove)
+                if (isNaN(index)) return this.sendError(res, 0, 'Invalid songIndexToRemove', format)
                 const musics = await userSpace.listManage.listDataManage.getListMusics(playlistId)
-
                 if (index < 0 || index >= musics.length) {
                     return this.sendError(res, 0, 'Index out of bounds', format)
                 }
-
                 const songId = musics[index].id
-                // console.log(`[Subsonic] Removing song at index ${index} (ID: ${songId}) from playlist ${playlistId}`)
-
-                // 执行物理删除
                 await userSpace.listManage.listDataManage.listMusicRemove(playlistId, [songId])
-                // 创建快照持久化
                 await userSpace.listManage.createSnapshot()
-
                 return this.sendResponse(res, {}, format)
-            } catch (err: any) {
-                console.error('[Subsonic] updatePlaylist error:', err)
-                return this.sendError(res, 0, err.message || 'Failed to remove song', format)
+            }
+
+            // 2. 删除多首：按 ID
+            if (songIdToRemove) {
+                const ids = Array.isArray(songIdToRemove) ? songIdToRemove : [songIdToRemove]
+                await userSpace.listManage.listDataManage.listMusicRemove(playlistId, ids)
+                await userSpace.listManage.createSnapshot()
+                return this.sendResponse(res, {}, format)
+            }
+
+            // 3. 追加歌曲
+            if (appendSongIds && appendSongIds.length > 0) {
+                const addType: LX.AddMusicLocationType = 'bottom'
+                const addLocation = (global.lx.config['list.addMusicLocationType'] as LX.AddMusicLocationType) || addType
+                // 尝试从用户的现有库中解析歌曲
+                const allMusicsMap = new Map<string, LX.Music.MusicInfo>()
+                const collect = (list: LX.Music.MusicInfo[]) => list.forEach(m => allMusicsMap.set(m.id, m))
+                collect(listData.loveList)
+                collect(listData.defaultList)
+                listData.userList.forEach(l => collect((l.list || []) as LX.Music.MusicInfo[]))
+
+                const toAdd: LX.Music.MusicInfo[] = []
+                for (const sid of appendSongIds) {
+                    if (allMusicsMap.has(sid)) {
+                        toAdd.push(allMusicsMap.get(sid)!)
+                    } else {
+                        // 尝试解析为搜索结果 (从 SDK 实时获取)
+                        try {
+                            const fetched = await this.fetchMusicById(sid, username)
+                            if (fetched) toAdd.push(fetched)
+                        } catch (e) {
+                            console.warn(`[Subsonic] Cannot resolve song ${sid} for append:`, e)
+                        }
+                    }
+                }
+                if (toAdd.length > 0) {
+                    await userSpace.listManage.listDataManage.listMusicAdd(playlistId, toAdd, addLocation)
+                    await userSpace.listManage.createSnapshot()
+                }
+                return this.sendResponse(res, {}, format)
+            }
+
+            // 4. 重命名/改备注
+            if (name !== null || comment !== null || public_ !== null) {
+                const listInfo = listData.userList.find(l => l.id === playlistId)
+                if (!listInfo) {
+                    return this.sendError(res, 70, 'Playlist not found', format)
+                }
+                if (name) listInfo.name = name
+                await userSpace.listManage.listDataManage.userListsUpdate([listInfo])
+                await userSpace.listManage.createSnapshot()
+                return this.sendResponse(res, {}, format)
+            }
+
+            return this.sendResponse(res, {}, format)
+        } catch (err: any) {
+            console.error('[Subsonic] updatePlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to update playlist', format)
+        }
+    }
+
+    /**
+     * [Free Music] 创建歌单
+     * 支持参数: name (必填), songIdToAdd[] (可选, 初始歌曲)
+     */
+    private async handleCreatePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
+        const name = (params.get('name') || '').trim()
+        if (!name) return this.sendError(res, 10, 'Required parameter is missing: name', format)
+
+        const songIds = params.getAll('songIdToAdd')
+
+        try {
+            const userSpace = getUserSpace(username)
+            const newId = `pl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+
+            await userSpace.listManage.listDataManage.userListCreate({
+                id: newId,
+                name,
+                position: 0,
+                locationUpdateTime: Date.now(),
+            })
+
+            if (songIds.length > 0) {
+                const allMusicsMap = new Map<string, LX.Music.MusicInfo>()
+                const listData = await userSpace.listManage.getListData()
+                const collect = (list: LX.Music.MusicInfo[]) => list.forEach(m => allMusicsMap.set(m.id, m))
+                collect(listData.loveList)
+                collect(listData.defaultList)
+                listData.userList.forEach(l => collect((l.list || []) as LX.Music.MusicInfo[]))
+
+                const toAdd: LX.Music.MusicInfo[] = []
+                for (const sid of songIds) {
+                    if (allMusicsMap.has(sid)) {
+                        toAdd.push(allMusicsMap.get(sid)!)
+                    } else {
+                        try {
+                            const fetched = await this.fetchMusicById(sid, username)
+                            if (fetched) toAdd.push(fetched)
+                        } catch (e) { /* 忽略 */ }
+                    }
+                }
+                if (toAdd.length > 0) {
+                    const addType: LX.AddMusicLocationType = (global.lx.config['list.addMusicLocationType'] as LX.AddMusicLocationType) || 'bottom'
+                    await userSpace.listManage.listDataManage.listMusicAdd(newId, toAdd, addType)
+                }
+            }
+
+            await userSpace.listManage.createSnapshot()
+
+            return this.handleGetPlaylist(res, username, new URLSearchParams(`id=${newId}`), format)
+        } catch (err: any) {
+            console.error('[Subsonic] createPlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to create playlist', format)
+        }
+    }
+
+    /**
+     * [Free Music] 删除歌单
+     */
+    private async handleDeletePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
+        const id = params.get('id')
+        if (!id) return this.sendError(res, 10, 'Required parameter is missing: id', format)
+
+        try {
+            const userSpace = getUserSpace(username)
+            const listData = await userSpace.listManage.getListData()
+            // 不允许删除默认/收藏列表
+            if (id === 'default' || id === 'love') {
+                return this.sendError(res, 0, 'Cannot delete default or love list', format)
+            }
+            const listInfo = listData.userList.find(l => l.id === id)
+            if (!listInfo) {
+                return this.sendError(res, 70, 'Playlist not found', format)
+            }
+
+            await userSpace.listManage.listDataManage.userListsRemove([id])
+            await userSpace.listManage.createSnapshot()
+            return this.sendResponse(res, {}, format)
+        } catch (err: any) {
+            console.error('[Subsonic] deletePlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to delete playlist', format)
+        }
+    }
+
+    /**
+     * [Free Music] Star / Unstar
+     * 支持 id (歌曲) / albumId / artistId
+     */
+    private async handleStar(res: http.ServerResponse, username: string, params: URLSearchParams, format: string, isStar: boolean) {
+        const songIds = params.getAll('id')
+        const albumIds = params.getAll('albumId')
+        const artistIds = params.getAll('artistId')
+
+        if (songIds.length === 0 && albumIds.length === 0 && artistIds.length === 0) {
+            return this.sendError(res, 10, 'Required parameter is missing: id/albumId/artistId', format)
+        }
+
+        try {
+            const userSpace = getUserSpace(username)
+            const listData = await userSpace.listManage.getListData()
+
+            if (isStar) {
+                // 添加到收藏
+                if (songIds.length > 0) {
+                    const allMusicsMap = new Map<string, LX.Music.MusicInfo>()
+                    const collect = (list: LX.Music.MusicInfo[]) => list.forEach(m => allMusicsMap.set(m.id, m))
+                    collect(listData.loveList)
+                    collect(listData.defaultList)
+                    listData.userList.forEach(l => collect((l.list || []) as LX.Music.MusicInfo[]))
+
+                    const toAdd: LX.Music.MusicInfo[] = []
+                    for (const sid of songIds) {
+                        if (allMusicsMap.has(sid)) {
+                            toAdd.push(allMusicsMap.get(sid)!)
+                        } else {
+                            try {
+                                const fetched = await this.fetchMusicById(sid, username)
+                                if (fetched) toAdd.push(fetched)
+                            } catch (e) { /* 忽略 */ }
+                        }
+                    }
+                    if (toAdd.length > 0) {
+                        await userSpace.listManage.listDataManage.listMusicAdd('love', toAdd, 'top')
+                    }
+                }
+                // 专辑/歌手 star 暂不持久化 (项目无对应模型)
+            } else {
+                if (songIds.length > 0) {
+                    await userSpace.listManage.listDataManage.listMusicRemove('love', songIds)
+                }
+            }
+            await userSpace.listManage.createSnapshot()
+            return this.sendResponse(res, {}, format)
+        } catch (err: any) {
+            console.error(`[Subsonic] ${isStar ? 'star' : 'unstar'} error:`, err)
+            return this.sendError(res, 0, err.message || 'Star operation failed', format)
+        }
+    }
+
+    /**
+     * [Free Music] Scrobble
+     * 接收客户端的播放上报 (id + time/nowPlaying/submission)
+     * 当前仅记录日志/更新最近播放时间
+     */
+    private async handleScrobble(req: http.IncomingMessage, res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
+        const ids = params.getAll('id')
+        const time = parseInt(params.get('time') || `${Date.now()}`)
+        const submission = params.get('submission') !== 'false'
+
+        if (ids.length === 0) {
+            return this.sendError(res, 10, 'Required parameter is missing: id', format)
+        }
+
+        // 仅更新活动时间和最近播放记录
+        if (submission) {
+            try {
+                const userSpace = getUserSpace(username)
+                const listData = await userSpace.listManage.getListData()
+                const allMusicsMap = new Map<string, LX.Music.MusicInfo>()
+                const collect = (list: LX.Music.MusicInfo[]) => list.forEach(m => allMusicsMap.set(m.id, m))
+                collect(listData.loveList)
+                collect(listData.defaultList)
+                listData.userList.forEach(l => collect((l.list || []) as LX.Music.MusicInfo[]))
+                // 可选：写最近播放 JSON
+                const recentsPath = path.join(global.lx.userPath, getUserDirname(username), 'recents.json')
+                const recents = fs.existsSync(recentsPath) ? JSON.parse(fs.readFileSync(recentsPath, 'utf-8')) : []
+                const items = ids.map(id => {
+                    const m = allMusicsMap.get(id)
+                    return { id, name: m?.name || '', singer: m?.singer || '', time }
+                })
+                const merged = [...items, ...recents].slice(0, 200)
+                fs.writeFileSync(recentsPath, JSON.stringify(merged, null, 2))
+            } catch (e: any) {
+                console.warn('[Subsonic] scrobble persistence failed:', e.message)
             }
         }
 
-        // TODO: 支持 songIdToAdd 等其他参数
         return this.sendResponse(res, {}, format)
+    }
+
+    /**
+     * [Free Music] 根据 Subsonic 风格 ID 解析歌曲
+     * ID 格式: source_songmid (例如 wy_12345, tx_abc)
+     */
+    private async fetchMusicById(id: string, username: string): Promise<LX.Music.MusicInfo | null> {
+        if (!id || !id.includes('_')) return null
+        const idx = id.indexOf('_')
+        const source = id.substring(0, idx)
+        const songmid = id.substring(idx + 1)
+        const sdk = musicSdk[source]
+        if (!sdk?.musicInfo?.getMusicInfo) return null
+
+        try {
+            const meta = await sdk.musicInfo.getMusicInfo(songmid)
+            if (!meta) return null
+            return {
+                id,
+                name: meta.name || meta.songName || 'Unknown',
+                singer: meta.singer || meta.singerName || 'Unknown',
+                source,
+                interval: meta.interval || '',
+                albumName: meta.albumName || '',
+                img: meta.img || meta.picUrl || '',
+                ...({ meta } as any),
+            } as any
+        } catch (e) {
+            return null
+        }
     }
 
     // getAlbum: 返回 album + song[] 格式（音流等客户端期望的格式）
@@ -835,7 +1106,7 @@ class SubsonicHandler {
             name: listName,
             title: listName,
             album: listName,
-            artist: (musics.length === 1) ? musics[0].singer : 'LX Music',
+            artist: (musics.length === 1) ? musics[0].singer : 'Free Music',
             artistId: (musics.length === 1) ? ((musics[0] as any).singerId ? `art_${musics[0].source}_${(musics[0] as any).singerId}` : `artist_${(musics[0].singer || '').split('、')[0]}`) : 'artist_lxmusic',
             songCount: musics.length,
             duration: musics.reduce((sum: number, m: any) => sum + this.parseDuration(m.interval), 0),
@@ -1037,14 +1308,14 @@ class SubsonicHandler {
 
             const buildAlbum = (album: any) => {
                 const source = album.source || 'wy'
-                const primarySinger = (album.artistName || '').split('、')[0] || 'LX Music'
+                const primarySinger = (album.artistName || '').split('、')[0] || 'Free Music'
                 const artistId = album.singerId ? `art_${source}_${album.singerId}` : `artist_${primarySinger}`
                 return {
                     id: `alb_${source}_${album.id}`,
                     name: album.name,
                     title: album.name,
                     album: album.name,
-                    artist: album.artistName || 'LX Music',
+                    artist: album.artistName || 'Free Music',
                     artistId: artistId,
                     isDir: true,
                     coverArt: album.picUrl || album.meta?.picUrl || `alb_${source}_${album.id}`,
@@ -1335,60 +1606,163 @@ class SubsonicHandler {
     }
 
     private async handleSearch(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
-        let query = (params.get('query') || '').trim().toLowerCase()
-        if (query === '""' || query === "''") query = '' // 处理某些客户端发送的空占位符
-
-        const userSpace = getUserSpace(username)
-        const listData = await userSpace.listManage.getListData()
-
-        // [去重汇总所有歌单歌曲]
-        const allSongsMap = new Map<string, { music: LX.Music.MusicInfo, listId: string }>()
-        const collect = (list: LX.Music.MusicInfo[], listId: string) => {
-            for (const m of list) {
-                if (!allSongsMap.has(m.id)) {
-                    allSongsMap.set(m.id, { music: m, listId })
-                }
-            }
+        let query = (params.get('query') || '').trim()
+        // 处理某些客户端发送的空占位符
+        if (query === '""' || query === "''") query = ''
+        if (!query) {
+            return this.sendResponse(res, { searchResult3: { song: [], album: [], artist: [] } }, format)
         }
-        collect(listData.loveList, 'love')
-        collect(listData.defaultList, 'default')
-        for (const list of listData.userList) {
-            collect((list.list || []) as LX.Music.MusicInfo[], list.id)
-        }
-        const uniqueMusics = Array.from(allSongsMap.values())
 
-        // console.log(`[Subsonic] handleSearch query="${query}", total unique musics=${uniqueMusics.length}`)
-
-        const matched = query
-            ? uniqueMusics.filter(({ music }) =>
-                music.name.toLowerCase().includes(query) ||
-                music.singer.toLowerCase().includes(query) ||
-                ((music as any).meta?.albumName || '').toLowerCase().includes(query)
-            )
-            : uniqueMusics
-
-        // console.log(`[Subsonic] handleSearch matched=${matched.length}`)
+        // [Free Music] 实时调用在线音乐 SDK 搜索
+        // 可选配置 subsonic.searchSource (默认 'wy')
+        // 兼容模式：若 query 为空且需要本地搜索，可后续扩展
+        const searchSource = (global.lx.config['subsonic.searchSource'] as string) || 'wy'
+        const source = musicSdk[searchSource] ? searchSource : 'wy'
+        const sdk = musicSdk[source]
 
         const songCount = parseInt(params.get('songCount') || '20')
         const songOffset = parseInt(params.get('songOffset') || '0')
-        const songs = matched.slice(songOffset, songOffset + songCount)
+        const albumCount = parseInt(params.get('albumCount') || '20')
+        const albumOffset = parseInt(params.get('albumOffset') || '0')
+        const artistCount = parseInt(params.get('artistCount') || '20')
+        const artistOffset = parseInt(params.get('artistOffset') || '0')
+
+        // 并行执行歌曲/歌手/专辑/歌单搜索
+        const tasks: Array<Promise<any>> = []
+
+        // 歌曲
+        if (sdk.musicSearch?.search) {
+            tasks.push(sdk.musicSearch.search(query, Math.floor(songOffset / 20) + 1, 20)
+                .then((res: any) => (res.list || []).map((s: any) => this.normalizeSdkSong(s, source)))
+                .catch((e: any) => { console.warn('[Subsonic] search songs failed:', e.message); return [] }))
+        } else {
+            tasks.push(Promise.resolve([]))
+        }
+
+        // 歌手
+        if (sdk.extendSearch?.searchSinger) {
+            tasks.push(sdk.extendSearch.searchSinger(query, Math.floor(artistOffset / 20) + 1, 20)
+                .then((res: any) => (res.list || []).map((s: any) => this.normalizeSdkSinger(s, source)))
+                .catch((e: any) => { console.warn('[Subsonic] search singers failed:', e.message); return [] }))
+        } else {
+            tasks.push(Promise.resolve([]))
+        }
+
+        // 专辑
+        if (sdk.extendSearch?.searchAlbum) {
+            tasks.push(sdk.extendSearch.searchAlbum(query, Math.floor(albumOffset / 20) + 1, 20)
+                .then((res: any) => (res.list || []).map((s: any) => this.normalizeSdkAlbum(s, source)))
+                .catch((e: any) => { console.warn('[Subsonic] search albums failed:', e.message); return [] }))
+        } else {
+            tasks.push(Promise.resolve([]))
+        }
+
+        // 歌单
+        if (sdk.extendSearch?.searchPlaylist) {
+            tasks.push(sdk.extendSearch.searchPlaylist(query, 1, 20)
+                .then((res: any) => (res.list || []).map((s: any) => this.normalizeSdkPlaylist(s, source)))
+                .catch((e: any) => { console.warn('[Subsonic] search playlists failed:', e.message); return [] }))
+        } else {
+            tasks.push(Promise.resolve([]))
+        }
+
+        const [songList, artistList, albumList, playlistList] = await Promise.all(tasks)
+
+        // 裁剪结果
+        const songs = (songList as any[]).slice(0, songCount)
+        const artists = (artistList as any[]).slice(0, artistCount)
+        const albums = (albumList as any[]).slice(0, albumCount)
 
         if (format === 'json') {
             return this.sendResponse(res, {
                 searchResult3: {
-                    song: songs.map(({ music, listId }) => this.musicToSongFlat(music, listId)),
-                    album: [],
-                    artist: [],
+                    song: songs,
+                    album: albums,
+                    artist: artists,
                 },
             }, format)
         }
         return this.sendResponse(res, {
             searchResult3: {
                 children: {
-                    song: songs.map(({ music, listId }) => this.musicToSongXml(music, listId)),
+                    song: songs.map(s => ({ attrs: s })),
+                    album: albums.map(a => ({ attrs: a })),
+                    artist: artists.map(a => ({ attrs: a })),
                 },
             },
         }, format)
+    }
+
+    /**
+     * [Free Music] 将 SDK 歌曲结果标准化为 LX.Music.MusicInfo
+     */
+    private normalizeSdkSong(s: any, source: string): LX.Music.MusicInfo {
+        const id = s.id || s.songmid || s.mid || `${source}_${s.hash || s.songId || Date.now()}`
+        const meta = s.meta || {}
+        return {
+            id: typeof id === 'string' && id.includes(source + '_') ? id : `${source}_${id}`,
+            name: s.name || s.songName || s.songname || s.title || 'Unknown',
+            singer: s.singer || s.singerName || (Array.isArray(s.singers) ? s.singers.map((x: any) => x.name).join('、') : 'Unknown'),
+            source,
+            interval: s.interval || s.duration || '',
+            albumName: s.albumName || meta.albumName || '',
+            img: s.img || s.picUrl || s.pic || s.cover || '',
+            ...({ meta: { ...meta, songId: s.songmid || s.songId || s.id } } as any),
+        } as any
+    }
+
+    /**
+     * [Free Music] 将 SDK 歌手结果标准化为 Subsonic artist 结构
+     */
+    private normalizeSdkSinger(s: any, source: string) {
+        const mid = s.mid || s.id || ''
+        const id = mid ? `ar_${source}_${mid}` : `artist_${s.name || 'unknown'}`
+        return {
+            id,
+            name: s.name || 'Unknown Artist',
+            albumCount: s.albumSize || s.albumCount || 0,
+        }
+    }
+
+    /**
+     * [Free Music] 将 SDK 专辑结果标准化为 Subsonic album 结构
+     */
+    private normalizeSdkAlbum(s: any, source: string) {
+        const mid = s.mid || s.id || ''
+        const id = mid ? `alb_${source}_${mid}` : `alb_${s.name || 'unknown'}`
+        return {
+            id,
+            name: s.name || 'Unknown Album',
+            title: s.name || 'Unknown Album',
+            album: s.name || 'Unknown Album',
+            artist: s.artistName || s.singer || 'Unknown Artist',
+            artistId: s.artistId ? `ar_${source}_${s.artistId}` : '',
+            coverArt: s.picUrl || s.cover || id,
+            songCount: s.size || s.songCount || 0,
+            duration: 0,
+            created: s.publishTime || '',
+            year: s.publishTime ? new Date(s.publishTime).getFullYear() : 0,
+            isDir: true,
+        }
+    }
+
+    /**
+     * [Free Music] 将 SDK 歌单结果标准化为 Subsonic playlist 结构
+     */
+    private normalizeSdkPlaylist(s: any, source: string) {
+        const mid = s.mid || s.id || ''
+        const id = mid ? `pl_${source}_${mid}` : `pl_${s.name || 'unknown'}`
+        return {
+            id,
+            name: s.name || s.dissname || 'Unknown Playlist',
+            comment: s.desc || '',
+            owner: s.creator || s.nick || 'Unknown',
+            public: true,
+            songCount: s.songCount || s.size || 0,
+            duration: 0,
+            created: s.createTime || s.publishTime || '',
+            coverArt: s.picUrl || s.imgurl || s.cover || id,
+        }
     }
 
     private async handleGetStarred(res: http.ServerResponse, username: string, format: string, isV2 = true) {

@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { extractMetadata, loadUserApi, initUserApis, getApiStatus } from './userApi'
 import type { IncomingMessage, ServerResponse } from 'http'
+import { resolveAuth as resolveUserAuthCtx, isUserAdmin } from '@/utils/auth'
 
 // 读取请求体
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -16,22 +17,31 @@ async function readBody(req: IncomingMessage): Promise<string> {
     })
 }
 
+/**
+ * [Free Music] 自定义源管理统一鉴权：仅管理员可操作
+ * - 允许通过 x-frontend-auth (管理员密码) 校验
+ * - 允许通过已登录的管理员用户 Token 校验
+ * - 所有其他用户 (包括普通登录用户) 一律 403
+ */
+function ensureAdminOrJson403(req: IncomingMessage, res: ServerResponse): boolean {
+    const ctx = resolveUserAuthCtx(req)
+    if (ctx.isAdmin) return true
+    res.writeHead(403, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: false, error: '权限不足：自定义源仅限管理员操作。' }))
+    return false
+}
+
 // 验证脚本
 export async function handleValidate(req: IncomingMessage, res: ServerResponse) {
     try {
         const body = await readBody(req)
         const { script, username, allowUnsafeVM } = JSON.parse(body)
 
-        // 鉴权逻辑：只有已登录用户（非 default）可以免密码验证
-        const targetOwner = (username && username !== 'default') ? username : 'open'
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '权限不足：管理自定义源需要先验证管理员身份。' }))
-                return
-            }
-        }
+        // [Free Music] 仅管理员可管理源
+        if (!ensureAdminOrJson403(req, res)) return
+
+        // [Free Music] 统一为 _open，忽略 username 参数
+        const targetOwner = 'open'
 
         if (!script || typeof script !== 'string') {
             throw new Error('Invalid script content')
@@ -151,20 +161,12 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
         const body = await readBody(req)
         const { filename, content, username, allowUnsafeVM } = JSON.parse(body)
 
-        // 确定 owner 用于后续标识
-        const targetOwner = (username && username !== 'default') ? username : 'open'
+        // [Free Music] 仅管理员可上传；统一存到 _open
+        if (!ensureAdminOrJson403(req, res)) return
+        const targetOwner = 'open'
+        const _ignoredUsername = username // 兼容：忽略入参 username
 
-        // 检查权限限制 (针对公开源)
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源管理已受限，仅管理员可操作。' }))
-                return
-            }
-        }
-
-        const sourcesDir = getSourceDir(username)
+        const sourcesDir = getSourceDir('open')
         const metaPath = path.join(sourcesDir, 'sources.json')
 
         // 创建目录
@@ -257,6 +259,10 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
         const body = await readBody(req)
         const { url, filename, username, allowUnsafeVM } = JSON.parse(body)
 
+        // [Free Music] 仅管理员可导入
+        if (!ensureAdminOrJson403(req, res)) return
+        const _ignoredUsername = username // 兼容：忽略入参 username
+
         if (!url) {
             throw new Error('Missing URL')
         }
@@ -327,7 +333,7 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
             }
         }
 
-        const targetOwner = (username && username !== 'default') ? username : 'open'
+        const targetOwner = 'open'
 
         // 检查权限限制
         if (targetOwner === 'open') {
@@ -339,7 +345,7 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
             }
         }
 
-        const sourcesDir = getSourceDir(username)
+        const sourcesDir = getSourceDir('open')
         const metaPath = path.join(sourcesDir, 'sources.json')
 
         // 创建目录
@@ -399,13 +405,11 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
 }
 
 // 获取列表
-// 如果提供了 username，返回 open + username 的源
-// 如果没提供，只返回 open 的源
-export async function handleList(req: IncomingMessage, res: ServerResponse, username: string) {
+// [Free Music] 只返回管理员上传的公共 _open 源，所有登录用户共享
+export async function handleList(req: IncomingMessage, res: ServerResponse, _username: string) {
     const openSources: any[] = []
-    const userSources: any[] = []
 
-    // 1. 读取 Open 源
+    // 读取 Open 源 (管理员上传的公共源)
     const openSourcesDir = getSourceDir('open') // -> .../_open
     const openMetaPath = path.join(openSourcesDir, 'sources.json')
 
@@ -420,45 +424,8 @@ export async function handleList(req: IncomingMessage, res: ServerResponse, user
         } catch (e) { }
     }
 
-    // 2. 读取 User 源 (如果有)
-    let userStates: Record<string, any> = {}
-    if (username && username !== 'default') {
-        const userSourcesDir = getSourceDir(username)
-        const userMetaPath = path.join(userSourcesDir, 'sources.json')
-        const userStatesPath = path.join(userSourcesDir, 'states.json')
-
-        if (fs.existsSync(userStatesPath)) {
-            try {
-                userStates = JSON.parse(fs.readFileSync(userStatesPath, 'utf-8'))
-            } catch (e) { }
-        }
-
-        if (fs.existsSync(userMetaPath)) {
-            try {
-                const parsedUserSources = JSON.parse(fs.readFileSync(userMetaPath, 'utf-8'))
-                parsedUserSources.forEach((s: any) => {
-                    s.owner = username
-                    s.isPublic = false
-                    userSources.push(s)
-                })
-            } catch (e) { }
-        }
-    }
-
-    // 合并列表：如果公开源和用户源存在相同ID，则排除公开源
-    const allSources: any[] = []
-    const userSourceIds = new Set(userSources.map(s => s.id))
-
-    openSources.forEach((s: any) => {
-        if (!userSourceIds.has(s.id)) {
-            if (userStates[s.id] && typeof userStates[s.id].enabled === 'boolean') {
-                s.enabled = userStates[s.id].enabled
-            }
-            allSources.push(s)
-        }
-    })
-
-    allSources.push(...userSources)
+    // [Free Music] 移除用户私有源逻辑，所有用户只能看到公共 _open 源
+    const allSources = openSources
 
     // 补充运行时状态
     const enrichedSources = allSources.map((source: any) => {
@@ -471,16 +438,9 @@ export async function handleList(req: IncomingMessage, res: ServerResponse, user
         return source
     })
 
-    // ===== 自定义合并后的排序逻辑 =====
-    let targetOwner = (username && username !== 'default') ? username : 'open'
-    let orderPath = path.join(getSourceDir(targetOwner), 'order.json')
+    // 排序：使用公共 _open/order.json
+    const orderPath = path.join(getSourceDir('open'), 'order.json')
     let order: string[] = []
-
-    if (!fs.existsSync(orderPath) && targetOwner !== 'open') {
-        // 未保存私有排序则尝试获取公开排序
-        orderPath = path.join(getSourceDir('open'), 'order.json')
-    }
-
     if (fs.existsSync(orderPath)) {
         try {
             order = JSON.parse(fs.readFileSync(orderPath, 'utf-8'))
@@ -490,22 +450,15 @@ export async function handleList(req: IncomingMessage, res: ServerResponse, user
     if (order.length > 0) {
         const idToIndex = new Map(order.map((id, index) => [id, index]))
         enrichedSources.sort((a, b) => {
-            // 永远保持“已启用”在前的分组逻辑
             if (a.enabled !== b.enabled) {
                 return a.enabled ? -1 : 1
             }
-
-            // 同组内根据保存的绝对顺序排序
             const indexA = idToIndex.has(a.id) ? idToIndex.get(a.id)! : 999999
             const indexB = idToIndex.has(b.id) ? idToIndex.get(b.id)! : 999999
-
-            if (indexA !== indexB) {
-                return indexA - indexB
-            }
+            if (indexA !== indexB) return indexA - indexB
             return 0
         })
     } else {
-        // 默认让启用的在前，禁用的在后
         enrichedSources.sort((a, b) => {
             if (a.enabled !== b.enabled) {
                 return a.enabled ? -1 : 1
@@ -519,24 +472,17 @@ export async function handleList(req: IncomingMessage, res: ServerResponse, user
 }
 
 // 启用/禁用
-// 启用/禁用
+// [Free Music] 仅管理员可操作；统一作用于公共 _open 源
 export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
     try {
         const body = await readBody(req)
         const { id, sourceId, enabled, username, allowUnsafeVM } = JSON.parse(body)
         const targetId = id || sourceId
+        const _ignoredUsername = username // 兼容：忽略入参 username
 
-        let targetOwner = (username && username !== 'default') ? username : 'open'
-
-        // 检查权限限制
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源状态切换已受限，仅管理员可操作。' }))
-                return
-            }
-        }
+        // [Free Music] 仅管理员
+        if (!ensureAdminOrJson403(req, res)) return
+        const targetOwner = 'open'
 
         let sourcesDir = getSourceDir(targetOwner)
         let metaPath = path.join(sourcesDir, 'sources.json')
@@ -572,45 +518,19 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
             throw new Error('源不存在')
         }
 
-        // 核心安全逻辑：
-        // 1. 如果正在执行的是公共源个人状态切换 (isPublicSourceToggle === true)
-        //    则只需在 server.ts 层面保证用户已登录即可，不需要额外的管理员密码。
-        // 2. 如果正在修改的是全局公共源 (targetOwner === 'open')
-        //    则必须校验管理员密码。
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '权限不足：管理全局公开自定义源需要验证管理员身份。' }))
-                return
-            }
-        }
-
-        if (isPublicSourceToggle) {
-            // 普通用户独立记录公开源的开启/关闭状态，不修改公开源属性
-            const userStatesPath = path.join(sourcesDir, 'states.json')
-            let states: any = {}
-            if (fs.existsSync(userStatesPath)) {
-                try { states = JSON.parse(fs.readFileSync(userStatesPath, 'utf-8')) } catch (e) { }
-            }
-            if (!states[targetId]) states[targetId] = {}
-            states[targetId].enabled = enabled !== undefined ? enabled : !(states[targetId].enabled ?? target.enabled)
-            fs.writeFileSync(userStatesPath, JSON.stringify(states, null, 2))
-
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: true, enabled: states[targetId].enabled }))
-            return
-        }
+        // [Free Music] 已在入口强制管理员鉴权，此处不再重复
+        // [Free Music] 移除了 isPublicSourceToggle 的用户级 states.json 逻辑：
+        //              所有用户共用 _open 源，启用/禁用由管理员统一管理
 
         const oldEnabled = target.enabled
         const oldAllowUnsafeVM = !!target.allowUnsafeVM
 
-        // 核心安全校验：如果试图开启 VM 模式（或当前就是 VM 模式），必须要验证管理员密码
+        // 核心安全校验：如果试图开启 VM 模式（或当前就是 VM 模式），仍需额外校验系统配置
+        // (管理员身份已在入口处统一校验)
         if (target.allowUnsafeVM || allowUnsafeVM) {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '开启/运行 VM 模式脚本需要验证管理员身份。' }))
+            if (!global.lx.config['system.allowUnsafeVM']) {
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, disabledVM: true, error: 'VM_DISABLED', message: '已禁用VM。该脚本需要原生 VM 模式运行，但服务器后台已禁用 VM 模式。' }))
                 return
             }
         }
@@ -678,26 +598,20 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
 }
 
 // 拖拽排序，更新 sources.json 中源的顺序
+// [Free Music] 仅管理员可操作；统一作用于公共 _open 源
 export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
     try {
         const body = await readBody(req)
         const { username, sourceIds } = JSON.parse(body)
+        const _ignoredUsername = username // 兼容：忽略入参 username
 
         if (!Array.isArray(sourceIds)) {
             throw new Error('sourceIds must be an array')
         }
 
-        let targetOwner = (username && username !== 'default') ? username : 'open'
-
-        // 检查权限限制 (公开源排序)
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源排序已受限，仅管理员可操作。' }))
-                return
-            }
-        }
+        // [Free Music] 仅管理员
+        if (!ensureAdminOrJson403(req, res)) return
+        const targetOwner = 'open'
 
         let sourcesDir = getSourceDir(targetOwner)
         let metaPath = path.join(sourcesDir, 'sources.json')
@@ -771,24 +685,17 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
 }
 
 // 删除
+// [Free Music] 仅管理员可操作；统一作用于公共 _open 源
 export async function handleDelete(req: IncomingMessage, res: ServerResponse) {
     try {
         const body = await readBody(req)
         const { id, sourceId, username } = JSON.parse(body)
         const targetId = id || sourceId
+        const _ignoredUsername = username // 兼容：忽略入参 username
 
-        // 查找逻辑同 Toggle
-        let targetOwner = (username && username !== 'default') ? username : 'open'
-
-        // 检查权限限制
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源删除已受限，仅管理员可操作。' }))
-                return
-            }
-        }
+        // [Free Music] 仅管理员
+        if (!ensureAdminOrJson403(req, res)) return
+        const targetOwner = 'open'
 
         let sourcesDir = getSourceDir(targetOwner)
         let metaPath = path.join(sourcesDir, 'sources.json')
@@ -804,35 +711,13 @@ export async function handleDelete(req: IncomingMessage, res: ServerResponse) {
             }
         }
 
-        if (!found && targetOwner !== 'open') {
-            const openSourcesDir = getSourceDir('open')
-            const openMetaPath = path.join(openSourcesDir, 'sources.json')
-
-            if (fs.existsSync(openMetaPath)) {
-                const openSources = JSON.parse(fs.readFileSync(openMetaPath, 'utf-8'))
-                if (openSources.find((s: any) => s.id === targetId)) {
-                    targetOwner = 'open'
-                    sourcesDir = openSourcesDir
-                    metaPath = openMetaPath
-                    sources = openSources
-                    found = true
-                }
-            }
-        }
+        // [Free Music] targetOwner 恒为 'open'，无需 fallback 到其他 owner
 
         if (!found) {
             throw new Error('源不存在')
         }
 
-        // 核心安全逻辑：删除全局公开源必须校验管理员权限
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '权限不足：删除全局公共源需要验证管理员身份。' }))
-                return
-            }
-        }
+        // [Free Music] 管理员身份已在入口处校验，此处不再重复
 
         const scriptPath = path.join(sourcesDir, targetId)
         sources = sources.filter((s: any) => s.id !== targetId)

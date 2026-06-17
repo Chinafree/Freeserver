@@ -21,6 +21,26 @@ declare namespace LX {
      * 添加歌曲到我的列表时的方式
      */
     'list.addMusicLocationType'?: AddMusicLocationType
+
+    /**
+     * 角色：admin(管理员) | user(普通用户)
+     */
+    role?: 'admin' | 'user'
+
+    /**
+     * 禁用状态
+     */
+    disabled?: boolean
+
+    /**
+     * 上次活跃时间 (毫秒时间戳)
+     */
+    lastActiveAt?: number
+
+    /**
+     * 创建时间 (毫秒时间戳)
+     */
+    createdAt?: number
   }
 
   interface UserConfig extends User {
@@ -171,6 +191,11 @@ declare namespace LX {
     'subsonic.path'?: string
 
     /**
+     * Subsonic 搜索音源 (用于 search3 实时在线搜索；推荐 wy/tx)
+     */
+    'subsonic.searchSource'?: string
+
+    /**
      * 歌手信息源优先级
      */
     'singer.sourcePriority': Array<'tx' | 'wy'>
@@ -186,6 +211,21 @@ declare namespace LX {
      * 是否允许运行 VM 模式自定义源脚本
      */
     'system.allowUnsafeVM'?: boolean
+
+    /**
+     * 是否仅启用公共源 (Free Music 模式)
+     */
+    'source.publicOnly'?: boolean
+
+    /**
+     * 是否要求所有 API 必须登录
+     */
+    'auth.requireLogin'?: boolean
+
+    /**
+     * 是否禁用服务器磁盘歌曲缓存
+     */
+    'stream.disableCache'?: boolean
   }
 }
 

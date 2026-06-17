@@ -299,7 +299,16 @@ if (fs.existsSync(usersJsonPath)) {
     const users = JSON.parse(fs.readFileSync(usersJsonPath, 'utf-8'))
     if (Array.isArray(users)) {
       console.log('Load users from users.json')
-      global.lx.config.users = users.map(u => ({ ...u, dataPath: '' }))
+      // 第一个加载的用户自动为管理员（兼容旧数据无 role 字段）
+      const hasAdmin = users.some((u: any) => u.role === 'admin')
+      global.lx.config.users = users.map((u: any, idx: number) => ({
+        ...u,
+        dataPath: '',
+        role: u.role || (!hasAdmin && idx === 0 ? 'admin' : 'user'),
+        disabled: !!u.disabled,
+        createdAt: u.createdAt || Date.now(),
+        lastActiveAt: u.lastActiveAt || 0,
+      }))
     }
   } catch (err) {
     console.error('Failed to load users.json', err)
@@ -307,11 +316,15 @@ if (fs.existsSync(usersJsonPath)) {
 } else {
   // Save initial users to users.json
   try {
-    fs.writeFileSync(usersJsonPath, JSON.stringify(global.lx.config.users.map(u => ({
+    fs.writeFileSync(usersJsonPath, JSON.stringify(global.lx.config.users.map((u, idx) => ({
       name: u.name,
       password: u.password,
       maxSnapshotNum: u.maxSnapshotNum,
       'list.addMusicLocationType': u['list.addMusicLocationType'],
+      role: (u as any).role || (idx === 0 ? 'admin' : 'user'),
+      disabled: !!(u as any).disabled,
+      createdAt: (u as any).createdAt || Date.now(),
+      lastActiveAt: (u as any).lastActiveAt || 0,
     })), null, 2))
   } catch (err) {
     console.error('Failed to save users.json', err)

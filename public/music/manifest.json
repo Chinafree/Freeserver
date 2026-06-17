@@ -1,6 +1,6 @@
 {
-    "name": "LX Music Web",
-    "short_name": "LX Music",
+    "name": "Free Music",
+    "short_name": "Free Music",
     "start_url": "./",
     "display": "standalone",
     "background_color": "#ffffff",

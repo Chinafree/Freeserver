@@ -819,8 +819,21 @@ class App {
                         </svg>
                     </button>
                 </div>
+                <div class="col-role">
+                    <select class="role-select ${user.role === 'admin' ? 'role-admin' : 'role-user'}" onchange="app.changeUserRole(${index}, this.value)" title="切换角色">
+                        <option value="user" ${user.role !== 'admin' ? 'selected' : ''}>普通用户</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>管理员</option>
+                    </select>
+                </div>
+                <div class="col-active" title="${user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleString('zh-CN') : '从未活跃'}">
+                    <span class="active-dot ${user.lastActiveAt && (Date.now() - user.lastActiveAt) < 5*60*1000 ? 'online' : 'offline'}"></span>
+                    <span class="active-text">${this.escapeHtml(this.formatActiveTime(user.lastActiveAt))}</span>
+                </div>
                 <div class="col-status">
-                    <span class="status-badge active">活跃</span>
+                    <label class="switch" title="${user.disabled ? '已禁用' : '已启用'}">
+                        <input type="checkbox" ${!user.disabled ? 'checked' : ''} onchange="app.toggleUserDisabled(${index}, this.checked)">
+                        <span class="slider"></span>
+                    </label>
                 </div>
                 <div class="col-actions">
                     <button class="btn-delete" onclick="app.deleteUser(${index})" title="删除用户">
@@ -836,6 +849,57 @@ class App {
         const selectAll = document.getElementById('select-all-users');
         if (selectAll) selectAll.checked = false;
         this.updateUserBatchBtn();
+    }
+
+    /**
+     * [Free Music] 格式化活跃时间
+     */
+    formatActiveTime(ts) {
+        if (!ts) return '从未活跃'
+        const diff = Date.now() - ts
+        if (diff < 60 * 1000) return '刚刚'
+        if (diff < 60 * 60 * 1000) return Math.floor(diff / 60000) + ' 分钟前'
+        if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / 3600000) + ' 小时前'
+        if (diff < 30 * 24 * 60 * 60 * 1000) return Math.floor(diff / 86400000) + ' 天前'
+        return new Date(ts).toLocaleDateString('zh-CN')
+    }
+
+    /**
+     * [Free Music] 切换用户角色
+     */
+    async changeUserRole(index, newRole) {
+        const user = this.users[index]
+        if (!user) return
+        try {
+            await this.request('/api/users', {
+                method: 'PUT',
+                body: JSON.stringify({ name: user.name, role: newRole })
+            })
+            this.loadUsers()
+            showSuccess('角色已更新')
+        } catch (err) {
+            showError('角色更新失败: ' + err.message)
+            this.loadUsers()
+        }
+    }
+
+    /**
+     * [Free Music] 切换用户禁用状态
+     */
+    async toggleUserDisabled(index, disabled) {
+        const user = this.users[index]
+        if (!user) return
+        try {
+            await this.request('/api/users', {
+                method: 'PUT',
+                body: JSON.stringify({ name: user.name, disabled })
+            })
+            this.loadUsers()
+            showSuccess(disabled ? '已禁用该用户' : '已启用该用户')
+        } catch (err) {
+            showError('操作失败: ' + err.message)
+            this.loadUsers()
+        }
     }
 
     filterUsers() {
@@ -2589,7 +2653,7 @@ class App {
             // 添加 user 参数
             const data = await this.request(`/api/data/snapshot?id=${id}&user=${encodeURIComponent(username)}`);
 
-            // 转换为 LX Music 备份格式
+            // 转换为 Free Music 备份格式
             const defaultList = { id: 'default', name: 'list__name_default' };
             const loveList = { id: 'love', name: 'list__name_love' };
 

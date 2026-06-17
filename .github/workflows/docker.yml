@@ -3,12 +3,15 @@ name: Build and Push Docker Image
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+
 env:
   REGISTRY: ghcr.io
-  # 使用 github.repository_owner 获取用户名，并指定镜像名为 lxserver
-  IMAGE_NAME: ${{ github.repository_owner }}/lxserver
-  # Docker Hub 仓库名
-  DOCKER_HUB_REPO: ${{ secrets.DOCKER_USERNAME }}/lxserver
+  # 使用 github.repository_owner 获取用户名，并指定镜像名为 FreeMusicServer
+  IMAGE_NAME: ${{ github.repository_owner }}/FreeMusicServer
 
 jobs:
   build_and_push:

@@ -496,7 +496,10 @@ export async function callUserApiGetMusicUrl(
 
     // 读取当前用户的公开源状态覆盖（启用/禁用）以及私有源 ID 集合
     let userStates: Record<string, any> = {}
-    if (clientUsername && clientUsername !== 'default') {
+    // [Free Music] 是否只使用公共源（管理员上传的 _open 源）
+    const publicOnly = global.lx.config['source.publicOnly'] !== false
+
+    if (clientUsername && clientUsername !== 'default' && !publicOnly) {
         const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
         const userPath = path.join(dataPath, 'users', 'source', clientUsername)
         const statesPath = path.join(userPath, 'states.json')
@@ -521,7 +524,7 @@ export async function callUserApiGetMusicUrl(
         if (api.info.owner === 'open') {
             // 计算公开源对当前用户的有效启用状态
             let isEnabled = api.info.enabled
-            if (clientUsername && clientUsername !== 'default' && userStates[api.info.id]) {
+            if (!publicOnly && clientUsername && clientUsername !== 'default' && userStates[api.info.id]) {
                 if (typeof userStates[api.info.id].enabled === 'boolean') {
                     isEnabled = userStates[api.info.id].enabled
                 }
@@ -529,11 +532,12 @@ export async function callUserApiGetMusicUrl(
             if (!isEnabled) continue
             if (userApiIds.has(api.info.id)) continue  // 被同名私有版本覆盖，跳过
             candidates.push(api)
-        } else if (clientUsername && api.info.owner === clientUsername) {
+        } else if (!publicOnly && clientUsername && api.info.owner === clientUsername) {
             if (!api.info.enabled) continue
             candidates.push(api)
             userApiIds.add(api.info.id) // 兜底：确保后续不重复添加公开同名源
         }
+        // [Free Music] publicOnly 模式下忽略所有非 open 的源
     }
 
     // === 实时按 order.json 对候选列表排序 ===
@@ -543,8 +547,8 @@ export async function callUserApiGetMusicUrl(
         const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
         let orderData: string[] = []
 
-        // 优先读用户自己的排序（admin/order.json），再回退到公开源排序（_open/order.json）
-        const orderCandidates = clientUsername && clientUsername !== 'default'
+        // [Free Music] 公共源优先：publicOnly 模式下只读 _open/order.json
+        const orderCandidates = (!publicOnly && clientUsername && clientUsername !== 'default')
             ? [
                 path.join(dataPath, 'users', 'source', clientUsername, 'order.json'),
                 path.join(dataPath, 'users', 'source', '_open', 'order.json')
@@ -910,15 +914,17 @@ export function getLoadedApis() {
 // 检查某个源是否被支持
 // clientUsername: 调用者的用户名。如果未提供，则只能检查 open 源
 export function isSourceSupported(source: string, clientUsername?: string): boolean {
+    // [Free Music] 是否只使用公共源
+    const publicOnly = global.lx.config['source.publicOnly'] !== false
+
     for (const [apiId, api] of loadedApis) {
         if (!api.info.enabled || !api.info.sources || !api.info.sources[source]) {
             continue
         }
 
         // 权限检查
-        if (api.info.owner === 'open' || (clientUsername && api.info.owner === clientUsername)) {
-            return true
-        }
+        if (api.info.owner === 'open') return true
+        if (!publicOnly && clientUsername && api.info.owner === clientUsername) return true
     }
     return false
 }

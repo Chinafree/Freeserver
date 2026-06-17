@@ -10,6 +10,14 @@ const { MusicTagger, MetaPicture } = require('music-tag-native')
 import { buildLyrics, parseLyrics } from '../utils/lrcTool'
 import { formatPlayTime } from '../common/utils/common'
 
+/**
+ * [Free Music] 服务器侧磁盘歌曲缓存是否启用
+ * 默认禁用：每次播放/下载都直走源站 URL
+ */
+export function isCacheEnabled(): boolean {
+    return global.lx.config?.['stream.disableCache'] === false
+}
+
 // --- Cache Naming Patterns ---
 export const CACHE_NAMING_PATTERNS = {
     STANDARD: 'standard',       // {Name}_-_{Singer}_-_{Source}_-_{ID}_-_{Quality}
@@ -1240,6 +1248,12 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
 }
 
 export const downloadAndCache = async (songInfo: any, url: string, quality?: string, username?: string, signal?: AbortSignal, isOnlyDownload?: boolean, shouldEmbedLyric: boolean = true) => {
+    // [Free Music] 磁盘缓存已禁用
+    if (!isCacheEnabled()) {
+        const err: any = new Error('Free Music: 服务器侧歌曲缓存已禁用')
+        err.code = 'CACHE_DISABLED'
+        throw err
+    }
     const dir = ensureDir(username, isOnlyDownload)
     const baseName = getFileName(songInfo, quality, isOnlyDownload, username)
     const tempPath = path.join(dir, baseName + '.tmp')
@@ -1442,6 +1456,13 @@ export const serveCacheFile = (req: http.IncomingMessage, res: http.ServerRespon
     const roots = ['cache', 'music']
     let filePath = ''
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+
+    // [Free Music] 磁盘缓存已禁用
+    if (!isCacheEnabled()) {
+        res.writeHead(403, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Free Music: 服务器侧歌曲缓存已禁用' }))
+        return
+    }
     for (const folder of roots) {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         const checkPath = path.join(dir, filename) // [Fix] Allow subfolders

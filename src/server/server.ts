@@ -24,6 +24,15 @@ import * as customSourceHandlers from './customSourceHandlers'
 import * as fileCache from './fileCache'
 import crypto from 'node:crypto'
 import needle from 'needle'
+import {
+  resolveAuth as resolveUserAuthCtx,
+  isAuthRequired,
+  isUserAdmin,
+  touchUserActivity,
+  mergeUserActivityToConfig,
+  refreshAdminSet,
+  registerUserTokenResolver,
+} from '@/utils/auth'
 const { MusicTagger, MetaPicture } = require('music-tag-native')
 
 // ===== Player Session Store =====
@@ -238,6 +247,15 @@ export const verifyUserAuth = (req: IncomingMessage): string | null => {
 
   return null
 }
+
+// 注册 Token 解析器到 auth 工具，以支持 /api/* 通用鉴权
+registerUserTokenResolver({
+  resolveUserToken: (req) => verifyUserAuth(req),
+})
+
+// 启动时合并磁盘上的活跃时间到内存
+mergeUserActivityToConfig()
+refreshAdminSet()
 
 /** 定期清理过期用户 Token（每小时） */
 setInterval(() => {
@@ -481,6 +499,10 @@ const saveUsers = () => {
       password: u.password,
       maxSnapshotNum: u.maxSnapshotNum,
       'list.addMusicLocationType': u['list.addMusicLocationType'],
+      role: (u as any).role || 'user',
+      disabled: !!(u as any).disabled,
+      createdAt: (u as any).createdAt || Date.now(),
+      lastActiveAt: (u as any).lastActiveAt || 0,
     })), null, 2))
     return true
   } catch (err) {
@@ -828,6 +850,30 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
     if (pathname.startsWith('/api/')) {
 
+      // [Free Music] 统一鉴权门禁
+      // 允许匿名访问的接口白名单 (登录、登录页、播放器 Session、心跳等)
+      const ANON_ALLOW = new Set<string>([
+        '/api/login',
+        '/api/user/login',
+        '/api/user/verify',
+        '/api/user/auth/verify',
+        '/api/music/auth',          // 旧播放器密码登录
+        '/api/music/auth/verify',
+        '/api/music/auth/logout',
+        '/api/music/config',         // 公共配置
+        '/api/admin/verify',         // 管理员密码验证 (返回是否成功)
+        '/api/status',               // 服务器状态 (用于登录页)
+      ])
+
+      if (isAuthRequired() && !ANON_ALLOW.has(pathname) && req.method !== 'OPTIONS') {
+        const auth = resolveUserAuthCtx(req)
+        if (!auth.username) {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: false, error: 'Unauthorized: please login first' }))
+          return
+        }
+        // 同步活跃时间 (touchUserActivity 已在 resolveUserAuthCtx 中处理)
+      }
 
       if (pathname === '/api/login' && req.method === 'POST') {
         void readBody(req).then(body => {
@@ -930,8 +976,15 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
           return
         }
         if (req.method === 'GET') {
-          // 修改：返回包含密码的用户列表
-          const users = global.lx.config.users.map(u => ({ name: u.name, password: u.password }))
+          // 修改：返回包含密码、角色、活跃时间的用户列表
+          const users = global.lx.config.users.map(u => ({
+            name: u.name,
+            password: u.password,
+            role: (u as any).role || 'user',
+            disabled: !!(u as any).disabled,
+            createdAt: (u as any).createdAt || 0,
+            lastActiveAt: (u as any).lastActiveAt || 0,
+          }))
           res.writeHead(200, {
             'Content-Type': 'application/json',
             'Cache-Control': 'no-cache, no-store, must-revalidate'
@@ -942,7 +995,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         if (req.method === 'POST') {
           void readBody(req).then(body => {
             try {
-              const { name, password } = JSON.parse(body)
+              const { name, password, role } = JSON.parse(body)
               if (!name || !password) {
                 res.writeHead(400)
                 res.end('Missing name or password')
@@ -959,12 +1012,18 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
               const dataPath = path.join(global.lx.userPath, getUserDirname(name))
               checkAndCreateDir(dataPath)
 
+              const newRole = role === 'admin' ? 'admin' : 'user'
               global.lx.config.users.push({
                 name,
                 password,
                 dataPath,
-              })
+                role: newRole,
+                createdAt: Date.now(),
+                lastActiveAt: 0,
+                disabled: false,
+              } as any)
               saveUsers()
+              refreshAdminSet()
 
               res.writeHead(200)
               res.end(JSON.stringify({ success: true }))
@@ -978,8 +1037,8 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         if (req.method === 'PUT') {
           void readBody(req).then(body => {
             try {
-              const { name, newName, password } = JSON.parse(body)
-              if (!name || (!password && !newName)) {
+              const { name, newName, password, role, disabled } = JSON.parse(body)
+              if (!name || (!password && !newName && role === undefined && disabled === undefined)) {
                 res.writeHead(400)
                 res.end('Missing required fields')
                 return
@@ -995,7 +1054,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
               const handleFinalUpdate = () => {
                 if (password) user.password = password
+                if (role === 'admin' || role === 'user') (user as any).role = role
+                if (typeof disabled === 'boolean') (user as any).disabled = disabled
                 saveUsers()
+                refreshAdminSet()
                 res.writeHead(200)
                 res.end(JSON.stringify({ success: true }))
               }
@@ -1569,11 +1631,24 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             }
             const user = global.lx.config.users.find((u: any) => u.name === username && u.password === password)
             if (user) {
+              if ((user as any).disabled) {
+                loginLog.warn(`User login blocked (disabled): ${username} from ${ip}`)
+                res.writeHead(403, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ success: false, message: 'Account disabled' }))
+                return
+              }
               const token = generateSessionId()
               userSessions.set(token, { username, createdAt: Date.now() })
+              touchUserActivity(username)
               loginLog.info(`User token issued: ${username} from ${ip}`)
               res.writeHead(200, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ success: true, token, username }))
+              res.end(JSON.stringify({
+                success: true,
+                token,
+                username,
+                role: (user as any).role || 'user',
+                isAdmin: isUserAdmin(username),
+              }))
             } else {
               loginLog.warn(`User login failed: ${username} from ${ip}`)
               res.writeHead(401, { 'Content-Type': 'application/json' })
@@ -2117,6 +2192,15 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       }
 
       // [新增] File Cache APIs
+      // [Free Music] 流式缓存已禁用 (stream.disableCache=true)，所有缓存相关 API 全部短路
+      if (pathname.startsWith('/api/music/cache/') || pathname === '/api/music/cache') {
+        if (global.lx.config['stream.disableCache'] !== false) {
+          res.writeHead(403, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: false, error: 'Free Music: 服务器侧歌曲缓存已禁用。' }))
+          return
+        }
+      }
+
       // 1. Config Cache Location
       if (pathname === '/api/music/cache/config' && req.method === 'POST') {
         const reqUsername = req.headers['x-user-name'] as string
@@ -4496,8 +4580,12 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
             'player.path': global.lx.config['player.path'] ?? '/music',
             'subsonic.enable': global.lx.config['subsonic.enable'] ?? true,
             'subsonic.path': global.lx.config['subsonic.path'] ?? '/rest',
+            'subsonic.searchSource': global.lx.config['subsonic.searchSource'] ?? 'wy',
             'singer.sourcePriority': (global.lx.config['singer.sourcePriority'] || ['tx', 'wy']).join(','),
             'system.allowUnsafeVM': global.lx.config['system.allowUnsafeVM'] || false,
+            'source.publicOnly': global.lx.config['source.publicOnly'] !== false,
+            'auth.requireLogin': global.lx.config['auth.requireLogin'] !== false,
+            'stream.disableCache': global.lx.config['stream.disableCache'] !== false,
           }
           res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -4591,10 +4679,20 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
               if (newConfig['subsonic.path'] !== undefined) {
                 global.lx.config['subsonic.path'] = newConfig['subsonic.path'].replace(/\/+$/, '') || '/rest'
               }
+              if (newConfig['subsonic.searchSource'] !== undefined) {
+                const v = String(newConfig['subsonic.searchSource']).trim()
+                if (['wy', 'tx', 'kg', 'kw', 'mg', 'bd'].includes(v)) {
+                  global.lx.config['subsonic.searchSource'] = v
+                }
+              }
               if (newConfig['singer.sourcePriority'] !== undefined) {
                 const priority = String(newConfig['singer.sourcePriority']).split(',').filter(s => s === 'tx' || s === 'wy') as Array<'tx' | 'wy'>
                 if (priority.length > 0) global.lx.config['singer.sourcePriority'] = priority
               }
+              // [Free Music] Free Music 模式开关
+              if (newConfig['source.publicOnly'] !== undefined) global.lx.config['source.publicOnly'] = !!newConfig['source.publicOnly']
+              if (newConfig['auth.requireLogin'] !== undefined) global.lx.config['auth.requireLogin'] = !!newConfig['auth.requireLogin']
+              if (newConfig['stream.disableCache'] !== undefined) global.lx.config['stream.disableCache'] = !!newConfig['stream.disableCache']
 
               // 更新 WebDAVSync 配置
               if (global.lx.webdavSync && (newConfig['webdav.url'] || newConfig['webdav.username'] || newConfig['webdav.password'] || newConfig['sync.interval'])) {
@@ -4629,7 +4727,11 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
                 'player.path': global.lx.config['player.path'] ?? '/music',
                 'subsonic.enable': global.lx.config['subsonic.enable'],
                 'subsonic.path': global.lx.config['subsonic.path'],
+                'subsonic.searchSource': global.lx.config['subsonic.searchSource'] ?? 'wy',
                 'system.allowUnsafeVM': global.lx.config['system.allowUnsafeVM'],
+                'source.publicOnly': global.lx.config['source.publicOnly'] !== false,
+                'auth.requireLogin': global.lx.config['auth.requireLogin'] !== false,
+                'stream.disableCache': global.lx.config['stream.disableCache'] !== false,
                 users: global.lx.config.users.map(u => ({
                   name: u.name,
                   password: u.password,

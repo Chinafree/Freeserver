@@ -1,6 +1,6 @@
 
 const config: LX.Config = {
-  serverName: 'lxserver', // 同步服务名称
+  serverName: 'free-music', // 同步服务名称
   'proxy.enabled': false, // 是否使用代理转发请求到本服务器
   'proxy.header': 'x-real-ip', // 代理转发的请求头 原始IP
   bindIP: '0.0.0.0', // 绑定IP
@@ -47,9 +47,13 @@ const config: LX.Config = {
   'player.path': '/music', // 播放器路径
   'subsonic.enable': true, // 是否启用 Subsonic 服务
   'subsonic.path': '/rest', // Subsonic 访问路径
+  'subsonic.searchSource': 'wy', // Subsonic 搜索源
   'singer.sourcePriority': ['tx', 'wy'], // 歌手信息源优先级
   'cache.namingPattern': 'standard', // 缓存命名规则
   'system.allowUnsafeVM': false, // 是否允许运行 VM 模式自定义源脚本
+  'source.publicOnly': true, // 是否仅启用公共源 (Free Music 模式：仅管理员管理的 _open 源对所有用户生效)
+  'auth.requireLogin': true, // 是否要求所有 API 必须登录
+  'stream.disableCache': true, // 是否禁用服务器磁盘歌曲缓存 (播放与下载直走源站 URL)
 }
 
 export default config
